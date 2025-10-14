@@ -1,0 +1,99 @@
+// Prisma schema for Podcast Index Manager
+// Mirrors PodcastIndex.org feed and episode metadata while keeping the
+// structure lean for operational dashboards.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Podcast {
+  id                  Int       @id @default(autoincrement())
+  podcastIndexId      Int?      @unique(map: "podcasts_podcast_index_id_unique")
+  podcastGuid         String?   @unique(map: "podcasts_podcast_guid_unique")
+  title               String
+  author              String?
+  ownerName           String?
+  language            String?   @db.VarChar(32)
+  image               String?
+  artwork             String?
+  description         String?   @db.Text
+  categories          Json?
+  lastUpdateTime      DateTime?
+  lastCrawlTime       DateTime?
+  lastParseTime       DateTime?
+  newestItemPublished DateTime?
+  episodeCount        Int?      @default(0)
+  explicit            Boolean?  @default(false)
+  medium              String?   @db.VarChar(32)
+  locked              Boolean?  @default(false)
+  feedUrl             String?
+  websiteUrl          String?   @map("website_url")
+  funding             Json?
+  value               Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  episodes            Episode[]
+  syncLogs            SyncLog[]
+}
+
+model Episode {
+  id              Int       @id @default(autoincrement())
+  podcastId       Int
+  podcast         Podcast   @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  podcastIndexId  Int?      @unique(map: "episodes_podcast_index_id_unique")
+  guid            String?   @db.VarChar(255)
+  title           String
+  description     String?   @db.Text
+  link            String?
+  enclosureUrl    String?   @db.Text
+  enclosureType   String?   @db.VarChar(128)
+  enclosureLength Int?      @default(0)
+  duration        Int?
+  explicit        Boolean?  @default(false)
+  image           String?
+  season          Int?
+  episode         Int?
+  transcriptUrl   String?
+  chaptersUrl     String?
+  persons         Json?
+  socialInteract  Json?
+  value           Json?
+  datePublished   DateTime? @map("published_at")
+  dateCrawled     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([podcastId, datePublished], map: "episodes_podcast_published_idx")
+}
+
+model SyncLog {
+  id         Int       @id @default(autoincrement())
+  podcastId  Int?
+  podcast    Podcast?  @relation(fields: [podcastId], references: [id], onDelete: Cascade)
+  jobType    String    @db.VarChar(64)
+  status     SyncStatus
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  payload    Json?
+  error      Json?
+  message    String?   @db.Text
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model SyncCursor {
+  id        String   @id
+  cursor    String
+  updatedAt DateTime @updatedAt
+}
