@@ -121,7 +121,16 @@ function normalizeEnvValue(source?: string | null) {
   if (!source) {
     return undefined;
   }
-  const normalized = source.trim();
+  let normalized = source.trim();
+  
+  // 移除首尾的引号(单引号或双引号)
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1);
+  }
+  
   return normalized.length > 0 ? normalized : undefined;
 }
 
@@ -151,9 +160,20 @@ function buildAuthHeaders({
   userAgent,
 }: PodcastIndexCredentials) {
   const authDate = Math.floor(Date.now() / 1000).toString();
+  const concatenated = `${apiKey}${apiSecret}${authDate}`;
   const hash = createHash("sha1")
-    .update(`${apiKey}${apiSecret}${authDate}`)
+    .update(concatenated)
     .digest("hex");
+
+  // 调试日志
+  console.log("🔐 Auth Debug:");
+  console.log("  Raw API Key from env:", process.env.PODCASTINDEX_API_KEY);
+  console.log("  Raw API Secret from env:", process.env.PODCASTINDEX_API_SECRET);
+  console.log("  Normalized API Key:", apiKey);
+  console.log("  Normalized API Secret:", apiSecret);
+  console.log("  Timestamp:", authDate);
+  console.log("  Concatenated:", concatenated);
+  console.log("  Hash:", hash);
 
   return {
     "User-Agent": userAgent,
