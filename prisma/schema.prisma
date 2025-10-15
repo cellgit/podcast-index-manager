@@ -46,7 +46,7 @@ model Episode {
   id              Int       @id @default(autoincrement())
   podcastId       Int
   podcast         Podcast   @relation(fields: [podcastId], references: [id], onDelete: Cascade)
-  podcastIndexId  Int?      @unique(map: "episodes_podcast_index_id_unique")
+  podcastIndexId  BigInt?   @unique(map: "episodes_podcast_index_id_unique")
   guid            String?   @db.VarChar(255)
   title           String
   description     String?   @db.Text

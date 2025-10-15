@@ -165,16 +165,6 @@ function buildAuthHeaders({
     .update(concatenated)
     .digest("hex");
 
-  // 调试日志
-  console.log("🔐 Auth Debug:");
-  console.log("  Raw API Key from env:", process.env.PODCASTINDEX_API_KEY);
-  console.log("  Raw API Secret from env:", process.env.PODCASTINDEX_API_SECRET);
-  console.log("  Normalized API Key:", apiKey);
-  console.log("  Normalized API Secret:", apiSecret);
-  console.log("  Timestamp:", authDate);
-  console.log("  Concatenated:", concatenated);
-  console.log("  Hash:", hash);
-
   return {
     "User-Agent": userAgent,
     "X-Auth-Date": authDate,
