@@ -1,5 +1,35 @@
-import { createHash } from "node:crypto";
+// src/lib/net-bootstrap.ts（建议新建一个文件，尽早 import）
+import dns from "node:dns";
+import { setGlobalDispatcher, Agent, ProxyAgent } from "undici";
 
+// 1) 让 Node 解析时优先 IPv4（等价于 curl 的 -4）
+dns.setDefaultResultOrder("ipv4first");
+
+// 2) 若存在显式代理，则用 ProxyAgent；否则用直连 Agent。
+//    这能保证 VSCode 里运行的 Node 进程与浏览器看到的“通路”一致。
+const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+const agent = httpsProxy
+  ? new ProxyAgent(httpsProxy)
+  : new Agent({
+      keepAliveTimeout: 60_000,
+      connect: {
+        timeout: 15_000, // 连接超时（毫秒）
+        family: 4,       // 强制 IPv4，避免走 IPv6 黑洞
+      },
+    });
+
+setGlobalDispatcher(agent);
+
+// 3) 可选：白名单直连该域名（即使系统/进程设了代理）
+const noProxy = process.env.NO_PROXY || process.env.no_proxy || "";
+if (!/(^|,)\s*api\.podcastindex\.org\s*(,|$)/i.test(noProxy)) {
+  process.env.NO_PROXY = [noProxy, "api.podcastindex.org"].filter(Boolean).join(",");
+}
+
+
+
+import { createHash } from "node:crypto";
+// https://api.podcastindex.org/api/1.0/search/byterm?q=batman+university&pretty
 const API_BASE = "https://api.podcastindex.org/api/1.0" as const;
 
 export class PodcastIndexRequestError extends Error {
@@ -87,11 +117,20 @@ export type EpisodeDetail = {
 
 type RequestInitAugmented = RequestInit & { skipAuth?: boolean };
 
+function normalizeEnvValue(source?: string | null) {
+  if (!source) {
+    return undefined;
+  }
+  const normalized = source.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function resolveCredentials(): PodcastIndexCredentials {
-  const apiKey = process.env.PODCASTINDEX_API_KEY;
-  const apiSecret = process.env.PODCASTINDEX_API_SECRET;
+  const apiKey = normalizeEnvValue(process.env.PODCASTINDEX_API_KEY);
+  const apiSecret = normalizeEnvValue(process.env.PODCASTINDEX_API_SECRET);
   const userAgent =
-    process.env.PODCASTINDEX_USER_AGENT ?? "PodcastIndexManager/1.0";
+    normalizeEnvValue(process.env.PODCASTINDEX_USER_AGENT) ??
+    "PodcastIndexManager/1.0";
 
   if (!apiKey || !apiSecret) {
     throw new Error(
@@ -122,6 +161,14 @@ function buildAuthHeaders({
     "X-Auth-Key": apiKey,
     Authorization: hash,
   } satisfies Record<string, string>;
+
+
+// return {
+//     "User-Agent": userAgent,
+//     "X-Auth-Date": "1760544744",
+//     "X-Auth-Key": "ZRWVT5W3NGTBRYMBYZXT",
+//     Authorization: "44db09bc2d2a80db9fd0cbb4acea9946ccfb90bb",
+//   } satisfies Record<string, string>;
 }
 
 export class PodcastIndexClient {
@@ -145,6 +192,7 @@ export class PodcastIndexClient {
 
     let response: Response;
     try {
+      console.log(`Fetching========== ${url}`);
       response = await fetch(url, {
         ...init,
         headers,

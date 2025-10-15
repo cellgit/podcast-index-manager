@@ -383,10 +383,10 @@ export default async function Home() {
                         className="flex items-start justify-between gap-3 rounded-md border border-border/60 bg-muted/40 px-3 py-3 text-sm"
                       >
                         <div className="space-y-1">
-                          <p className="flex items-center gap-2 font-medium text-foreground">
-                            {log.podcast?.title ?? "未关联的订阅源"}
+                          <div className="flex items-center gap-2 font-medium text-foreground">
+                            <span>{log.podcast?.title ?? "未关联的订阅源"}</span>
                             <Badge variant={status.variant}>{status.label}</Badge>
-                          </p>
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             {log.jobType} • {formatRelativeTime(log.startedAt)}
                           </p>
