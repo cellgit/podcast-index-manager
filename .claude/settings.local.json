@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(xargs:*)",
+      "Bash(context7 get:*)",
+      "WebFetch(domain:podcastindex-org.github.io)",
+      "WebSearch",
+      "Bash(npm run prisma:generate:*)",
+      "Bash(npm run prisma:migrate:*)",
+      "Bash(psql:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx prisma migrate reset:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(timeout 10 npm run dev:*)",
+      "Bash(npx prisma migrate:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

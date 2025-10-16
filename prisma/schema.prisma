@@ -12,77 +12,87 @@ datasource db {
 }
 
 model Podcast {
-  id                  Int       @id @default(autoincrement())
-  podcastIndexId      Int?      @unique(map: "podcasts_podcast_index_id_unique")
-  podcastGuid         String?   @unique(map: "podcasts_podcast_guid_unique")
-  title               String
-  author              String?
-  ownerName           String?
-  language            String?   @db.VarChar(32)
-  image               String?
-  artwork             String?
-  description         String?   @db.Text
-  categories          Json?
-  lastUpdateTime      DateTime?
-  lastCrawlTime       DateTime?
-  lastParseTime       DateTime?
-  newestItemPublished DateTime?
-  episodeCount        Int?      @default(0)
-  explicit            Boolean?  @default(false)
-  medium              String?   @db.VarChar(32)
-  locked              Boolean?  @default(false)
-  feedUrl             String?
-  websiteUrl          String?   @map("website_url")
-  funding             Json?
-  value               Json?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                    Int       @id @default(autoincrement())
+  podcast_index_id      Int?      @unique(map: "podcasts_podcast_index_id_unique")
+  podcast_guid          String?   @unique(map: "podcasts_podcast_guid_unique")
+  title                 String
+  author                String?
+  owner_name            String?
+  language              String?   @db.VarChar(32)
+  image                 String?
+  artwork               String?
+  description           String?   @db.Text
+  categories            Json?
+  last_update_time      DateTime?
+  last_crawl_time       DateTime?
+  last_parse_time       DateTime?
+  newest_item_published DateTime?
+  episode_count         Int?      @default(0)
+  explicit              Boolean?  @default(false)
+  medium                String?   @db.VarChar(32)
+  locked                Boolean?  @default(false)
+  feed_url              String?   @unique(map: "podcasts_feed_url_unique")
+  website_url           String?
+  funding               Json?
+  value                 Json?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
 
-  episodes            Episode[]
-  syncLogs            SyncLog[]
+  episodes              Episode[]
+  sync_logs             SyncLog[]
+
+  @@index([title], map: "podcasts_title_idx", type: Hash)
+  @@index([language], map: "podcasts_language_idx")
+  @@index([updated_at(sort: Desc)], map: "podcasts_updated_idx")
 }
 
 model Episode {
-  id              Int       @id @default(autoincrement())
-  podcastId       Int
-  podcast         Podcast   @relation(fields: [podcastId], references: [id], onDelete: Cascade)
-  podcastIndexId  BigInt?   @unique(map: "episodes_podcast_index_id_unique")
-  guid            String?   @db.VarChar(255)
-  title           String
-  description     String?   @db.Text
-  link            String?
-  enclosureUrl    String?   @db.Text
-  enclosureType   String?   @db.VarChar(128)
-  enclosureLength Int?      @default(0)
-  duration        Int?
-  explicit        Boolean?  @default(false)
-  image           String?
-  season          Int?
-  episode         Int?
-  transcriptUrl   String?
-  chaptersUrl     String?
-  persons         Json?
-  socialInteract  Json?
-  value           Json?
-  datePublished   DateTime? @map("published_at")
-  dateCrawled     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                Int       @id @default(autoincrement())
+  podcast_id        Int
+  podcast           Podcast   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
+  podcast_index_id  BigInt?   @unique(map: "episodes_podcast_index_id_unique")
+  guid              String?   @db.VarChar(255)
+  title             String
+  description       String?   @db.Text
+  link              String?
+  enclosure_url     String?   @db.Text
+  enclosure_type    String?   @db.VarChar(128)
+  enclosure_length  Int?      @default(0)
+  duration          Int?
+  explicit          Boolean?  @default(false)
+  image             String?
+  season            Int?
+  episode           Int?
+  transcript_url    String?
+  chapters_url      String?
+  persons           Json?
+  social_interact   Json?
+  value             Json?
+  date_published    DateTime?
+  date_crawled      DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
-  @@index([podcastId, datePublished], map: "episodes_podcast_published_idx")
+  @@unique([podcast_id, guid], map: "episodes_podcast_guid_unique")
+  @@index([podcast_id, date_published(sort: Desc)], map: "episodes_podcast_published_idx")
+  @@index([date_published(sort: Desc)], map: "episodes_published_idx")
+  @@index([title], map: "episodes_title_idx", type: Hash)
 }
 
 model SyncLog {
-  id         Int       @id @default(autoincrement())
-  podcastId  Int?
-  podcast    Podcast?  @relation(fields: [podcastId], references: [id], onDelete: Cascade)
-  jobType    String    @db.VarChar(64)
-  status     SyncStatus
-  startedAt  DateTime  @default(now())
-  finishedAt DateTime?
-  payload    Json?
-  error      Json?
-  message    String?   @db.Text
+  id          Int        @id @default(autoincrement())
+  podcast_id  Int?
+  podcast     Podcast?   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
+  job_type    String     @db.VarChar(64)
+  status      SyncStatus
+  started_at  DateTime   @default(now())
+  finished_at DateTime?
+  payload     Json?
+  error       Json?
+  message     String?    @db.Text
+
+  @@index([status, started_at(sort: Desc)], map: "sync_logs_status_started_idx")
+  @@index([podcast_id, started_at(sort: Desc)], map: "sync_logs_podcast_started_idx")
 }
 
 enum SyncStatus {
@@ -93,7 +103,7 @@ enum SyncStatus {
 }
 
 model SyncCursor {
-  id        String   @id
-  cursor    String
-  updatedAt DateTime @updatedAt
+  id         String   @id
+  cursor     String
+  updated_at DateTime @updatedAt
 }

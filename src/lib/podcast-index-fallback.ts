@@ -8,10 +8,11 @@ const FALLBACK_FEEDS: SearchPodcast[] = [
     description:
       "当 PodcastIndex 服务不可达时返回的本地示例数据，帮助演示控制台功能。",
     url: "https://example.com/podcasts/tech-demo/feed.xml",
+    link: "https://example.com/podcasts/tech-demo",
     image: "https://example.com/podcasts/tech-demo/cover.jpg",
-    episodeCount: 128,
+    episode_count: 128,
     language: "zh",
-    newestItemPublishTime: 1709251200,
+    newest_item_publish_time: 1709251200,
     categories: { "144": "Technology" },
   },
   {
@@ -21,10 +22,11 @@ const FALLBACK_FEEDS: SearchPodcast[] = [
     description:
       "Short bedtime stories and educational fun for children. Provided as offline sample data.",
     url: "https://example.com/podcasts/kids-storytime/feed.xml",
+    link: "https://example.com/podcasts/kids-storytime",
     image: "https://example.com/podcasts/kids-storytime/cover.jpg",
-    episodeCount: 64,
+    episode_count: 64,
     language: "en",
-    newestItemPublishTime: 1708128000,
+    newest_item_publish_time: 1708128000,
     categories: { "117": "Kids & Family" },
   },
   {
@@ -34,10 +36,11 @@ const FALLBACK_FEEDS: SearchPodcast[] = [
     description:
       "围绕城市生活、通勤与职场的故事。该数据用于控制台的离线检索体验。",
     url: "https://example.com/podcasts/city-life/feed.xml",
+    link: "https://example.com/podcasts/city-life",
     image: "https://example.com/podcasts/city-life/cover.jpg",
-    episodeCount: 86,
+    episode_count: 86,
     language: "zh",
-    newestItemPublishTime: 1708819200,
+    newest_item_publish_time: 1708819200,
     categories: { "132": "Society & Culture" },
   },
   {
@@ -47,10 +50,11 @@ const FALLBACK_FEEDS: SearchPodcast[] = [
     description:
       "Daily global headlines summarised for busy professionals. Offline sample feed for testing search queries.",
     url: "https://example.com/podcasts/global-news/feed.xml",
+    link: "https://example.com/podcasts/global-news",
     image: "https://example.com/podcasts/global-news/cover.jpg",
-    episodeCount: 210,
+    episode_count: 210,
     language: "en",
-    newestItemPublishTime: 1708992000,
+    newest_item_publish_time: 1708992000,
     categories: { "99": "News" },
   },
   {
@@ -60,10 +64,11 @@ const FALLBACK_FEEDS: SearchPodcast[] = [
     description:
       "记录独立创作者的访谈与实践心得。用于在离线状态下演示目录搜索。",
     url: "https://example.com/podcasts/creator-notes/feed.xml",
+    link: "https://example.com/podcasts/creator-notes",
     image: "https://example.com/podcasts/creator-notes/cover.jpg",
-    episodeCount: 42,
+    episode_count: 42,
     language: "zh",
-    newestItemPublishTime: 1708387200,
+    newest_item_publish_time: 1708387200,
     categories: { "140": "Business" },
   },
 ];
@@ -92,7 +97,7 @@ export function searchPodcastIndexFallback(term: string, max = 25): {
           feed.description,
           feed.categories ? Object.values(feed.categories).join(" ") : "",
         ]
-          .filter(Boolean)
+          .filter((val): val is string => Boolean(val))
           .map(normalize)
           .join(" ");
       return haystack.includes(keyword);

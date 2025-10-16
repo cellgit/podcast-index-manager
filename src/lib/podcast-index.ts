@@ -51,33 +51,39 @@ export type SearchPodcast = {
   author?: string;
   description?: string;
   url: string;
+  link?: string;
+  original_url?: string;
+  originalUrl?: string;
   image?: string;
   artwork?: string;
-  podcastGuid?: string;
+  podcast_guid?: string;
+  newest_item_publish_time?: number;
   newestItemPublishTime?: number;
+  episode_count?: number;
   episodeCount?: number;
   language?: string;
   categories?: Record<string, string>;
+  itunes_id?: number;
 };
 
 export type PodcastDetail = {
   feed: {
     id: number;
-    podcastGuid?: string;
+    podcast_guid?: string;
     title: string;
     url: string;
-    originalUrl?: string;
+    original_url?: string;
     link?: string;
     description?: string;
     author?: string;
-    ownerName?: string;
+    owner_name?: string;
     image?: string;
     artwork?: string;
-    lastUpdateTime?: number;
-    lastCrawlTime?: number;
-    lastParseTime?: number;
-    newestItemPublishTime?: number;
-    episodeCount?: number;
+    last_update_time?: number;
+    last_crawl_time?: number;
+    last_parse_time?: number;
+    newest_item_publish_time?: number;
+    episode_count?: number;
     explicit?: boolean;
     medium?: string;
     locked?: boolean;
@@ -94,24 +100,24 @@ export type EpisodeDetail = {
   link?: string;
   description?: string;
   guid?: string;
-  datePublished?: number;
-  dateCrawled?: number;
-  enclosureUrl?: string;
-  enclosureType?: string;
-  enclosureLength?: number;
+  date_published?: number;
+  date_crawled?: number;
+  enclosure_url?: string;
+  enclosure_type?: string;
+  enclosure_length?: number;
   duration?: number;
   explicit?: number;
   episode?: number;
   season?: number;
   image?: string;
-  feedId: number;
-  feedTitle?: string;
-  feedUrl?: string;
-  feedLanguage?: string;
-  transcriptUrl?: string;
-  chaptersUrl?: string;
+  feed_id: number;
+  feed_title?: string;
+  feed_url?: string;
+  feed_language?: string;
+  transcript_url?: string;
+  chapters_url?: string;
   persons?: unknown;
-  socialInteract?: unknown;
+  social_interact?: unknown;
   value?: unknown;
 };
 
@@ -272,6 +278,81 @@ export class PodcastIndexClient {
       `/recent/episodes?${params.toString()}`,
     );
     return data.items ?? [];
+  }
+
+  async podcastByGuid(guid: string): Promise<PodcastDetail["feed"] | null> {
+    const params = new URLSearchParams({ guid });
+    const data = await this.request<PodcastDetail>(`/podcasts/byguid?${params}`);
+    return data.feed ?? null;
+  }
+
+  async podcastByFeedUrl(url: string): Promise<PodcastDetail["feed"] | null> {
+    const params = new URLSearchParams({ url });
+    const data = await this.request<PodcastDetail>(`/podcasts/byfeedurl?${params}`);
+    return data.feed ?? null;
+  }
+
+  async podcastByItunesId(itunesId: number): Promise<PodcastDetail["feed"] | null> {
+    const params = new URLSearchParams({ id: String(itunesId) });
+    const data = await this.request<PodcastDetail>(`/podcasts/byitunesid?${params}`);
+    return data.feed ?? null;
+  }
+
+  async addByFeedUrl(url: string): Promise<PodcastDetail["feed"] | null> {
+    const params = new URLSearchParams({ url });
+    const data = await this.request<PodcastDetail>(`/add/byfeedurl?${params}`);
+    return data.feed ?? null;
+  }
+
+  async episodesByFeedUrl(
+    url: string,
+    options: { max?: number; since?: number } = {},
+  ): Promise<EpisodeDetail[]> {
+    const params = new URLSearchParams({ url });
+    if (options.max) {
+      params.set("max", String(options.max));
+    }
+    if (options.since) {
+      params.set("since", String(options.since));
+    }
+    const data = await this.request<{ items?: EpisodeDetail[] }>(
+      `/episodes/byfeedurl?${params.toString()}`,
+    );
+    return data.items ?? [];
+  }
+
+  async recentFeeds(options: { max?: number; since?: number; lang?: string } = {}) {
+    const params = new URLSearchParams();
+    if (options.max) {
+      params.set("max", String(options.max));
+    }
+    if (options.since) {
+      params.set("since", String(options.since));
+    }
+    if (options.lang) {
+      params.set("lang", options.lang);
+    }
+    const data = await this.request<{ feeds?: SearchPodcast[] }>(
+      `/recent/feeds?${params.toString()}`,
+    );
+    return data.feeds ?? [];
+  }
+
+  async trendingPodcasts(options: { max?: number; lang?: string; cat?: string } = {}) {
+    const params = new URLSearchParams();
+    if (options.max) {
+      params.set("max", String(options.max));
+    }
+    if (options.lang) {
+      params.set("lang", options.lang);
+    }
+    if (options.cat) {
+      params.set("cat", options.cat);
+    }
+    const data = await this.request<{ feeds?: SearchPodcast[] }>(
+      `/podcasts/trending?${params.toString()}`,
+    );
+    return data.feeds ?? [];
   }
 }
 

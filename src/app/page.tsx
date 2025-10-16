@@ -2,21 +2,18 @@ import type { ComponentType, SVGProps } from "react";
 import {
   Activity,
   AlertTriangle,
-  LayoutDashboard,
   Library,
-  ListChecks,
-  Mic2,
   PlayCircle,
   Plus,
   Radio,
   RefreshCcw,
-  Settings,
   Clock3,
 } from "lucide-react";
 import { SyncStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { PodcastSearch } from "@/components/podcast/podcast-search";
 import { SyncPodcastButton } from "@/components/podcast/sync-podcast-button";
+import { Sidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,13 +32,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-const NAV_ITEMS = [
-  { label: "总览", icon: LayoutDashboard, active: true },
-  { label: "内容库", icon: Library, active: false },
-  { label: "拉取任务", icon: ListChecks, active: false },
-  { label: "系统设置", icon: Settings, active: false },
-] as const;
 
 const STATUS_META: Record<
   SyncStatus,
@@ -94,6 +84,7 @@ export default async function Home() {
 
   const [
     podcasts,
+    totalPodcasts,
     latestEpisodes,
     recentLogs,
     totalEpisodeCount,
@@ -103,24 +94,26 @@ export default async function Home() {
     failuresLast24h,
   ] = await Promise.all([
     db.podcast.findMany({
-      orderBy: { updatedAt: "desc" },
+      orderBy: { updated_at: "desc" },
+      take: 50,
       include: {
         episodes: {
-          orderBy: { datePublished: "desc" },
+          orderBy: { date_published: "desc" },
           take: 3,
         },
       },
     }),
+    db.podcast.count(),
     db.episode.findMany({
-      orderBy: { datePublished: "desc" },
-      take: 15,
+      orderBy: { date_published: "desc" },
+      take: 50,
       include: {
         podcast: true,
       },
     }),
     db.syncLog.findMany({
-      orderBy: { startedAt: "desc" },
-      take: 10,
+      orderBy: { started_at: "desc" },
+      take: 20,
       include: {
         podcast: true,
       },
@@ -128,7 +121,7 @@ export default async function Home() {
     db.episode.count(),
     db.episode.count({
       where: {
-        datePublished: { gte: since24h },
+        date_published: { gte: since24h },
       },
     }),
     db.syncLog.count({
@@ -139,19 +132,19 @@ export default async function Home() {
     db.syncLog.count({
       where: {
         status: SyncStatus.SUCCESS,
-        startedAt: { gte: since24h },
+        started_at: { gte: since24h },
       },
     }),
     db.syncLog.count({
       where: {
         status: SyncStatus.FAILED,
-        startedAt: { gte: since24h },
+        started_at: { gte: since24h },
       },
     }),
   ]);
 
   const trackedFeedIds = podcasts
-    .map((podcast) => podcast.podcastIndexId)
+    .map((podcast) => podcast.podcast_index_id)
     .filter((id): id is number => typeof id === "number");
 
   const languages = new Set(
@@ -165,48 +158,7 @@ export default async function Home() {
 
   return (
     <div className="flex min-h-screen bg-muted/20">
-      <aside className="hidden w-72 flex-col border-r border-border/60 bg-background/80 backdrop-blur lg:flex">
-        <div className="flex h-16 items-center gap-3 border-b border-border/60 px-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Mic2 className="h-5 w-5" />
-          </div>
-          <div className="space-y-0.5">
-            <p className="text-sm font-semibold">播客运维</p>
-            <p className="text-xs text-muted-foreground">抓取控制台</p>
-          </div>
-        </div>
-        <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              className={
-                item.active
-                  ? "flex items-center gap-3 rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm font-medium shadow"
-                  : "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted"
-              }
-            >
-              <item.icon className="h-4 w-4" />
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </nav>
-        <div className="border-t border-border/60 p-4">
-          <Card className="border-dashed border-border/80 bg-muted/40">
-            <CardHeader className="space-y-1.5 pb-3">
-              <CardTitle className="text-sm font-semibold">自动化状态</CardTitle>
-              <CardDescription className="text-xs">
-                队列中共有 {pendingSyncs} 个同步任务，请确认 Worker 正常运行以保持内容最新。
-              </CardDescription>
-            </CardHeader>
-            <CardFooter>
-              <Button variant="outline" size="sm" className="w-full justify-center">
-                查看 Worker 状态
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-      </aside>
+      <Sidebar pendingSyncs={pendingSyncs} />
 
       <div className="flex flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-border/60 bg-background/90 px-4 backdrop-blur sm:px-6">
@@ -230,7 +182,7 @@ export default async function Home() {
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatCard
               title="已纳入播客"
-              value={podcasts.length}
+              value={totalPodcasts}
               description={`${languages.size || 0} 种活跃语言`}
               icon={Library}
             />
@@ -328,7 +280,9 @@ export default async function Home() {
                         <TableRow key={podcast.id}>
                           <TableCell>
                             <div className="flex flex-col">
-                              <span className="font-medium text-foreground">{podcast.title}</span>
+                              <a href={`/podcast/${podcast.id}`} className="font-medium text-foreground hover:text-primary hover:underline">
+                                {podcast.title}
+                              </a>
                               <span className="text-xs text-muted-foreground">
                                 {podcast.author ?? "未知作者"}
                               </span>
@@ -344,14 +298,14 @@ export default async function Home() {
                             )}
                           </TableCell>
                           <TableCell className="text-foreground">
-                            {podcast.episodeCount ?? podcast.episodes.length}
+                            {podcast.episode_count ?? podcast.episodes.length}
                           </TableCell>
                           <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
-                            {formatRelativeTime(podcast.updatedAt)}
+                            {formatRelativeTime(podcast.updated_at)}
                           </TableCell>
                           <TableCell className="text-right">
-                            {typeof podcast.podcastIndexId === "number" ? (
-                              <SyncPodcastButton feedId={podcast.podcastIndexId} />
+                            {typeof podcast.podcast_index_id === "number" ? (
+                              <SyncPodcastButton feedId={podcast.podcast_index_id} />
                             ) : (
                               <Badge variant="outline">手动</Badge>
                             )}
@@ -388,7 +342,7 @@ export default async function Home() {
                             <Badge variant={status.variant}>{status.label}</Badge>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {log.jobType} • {formatRelativeTime(log.startedAt)}
+                            {log.job_type} • {formatRelativeTime(log.started_at)}
                           </p>
                           {log.message ? (
                             <p className="text-xs text-muted-foreground">{log.message}</p>
@@ -442,10 +396,16 @@ export default async function Home() {
                             </span>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {episode.podcast?.title ?? "未知"}
+                            {episode.podcast ? (
+                              <a href={`/podcast/${episode.podcast.id}`} className="hover:text-primary hover:underline">
+                                {episode.podcast.title}
+                              </a>
+                            ) : (
+                              "未知"
+                            )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {episode.datePublished ? formatDate(episode.datePublished) : "—"}
+                            {episode.date_published ? formatDate(episode.date_published) : "—"}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {formatDuration(episode.duration)}

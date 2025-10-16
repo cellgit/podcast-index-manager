@@ -11,8 +11,9 @@ const paramsSchema = z.object({
 
 export async function POST(
   request: Request,
-  { params }: { params: { feedId: string } },
+  { params }: { params: Promise<{ feedId: string }> },
 ) {
+  const { feedId: feedIdParam } = await params;
   if (!prisma) {
     return NextResponse.json(
       { error: "DATABASE_URL is not configured" },
@@ -20,7 +21,7 @@ export async function POST(
     );
   }
 
-  const validation = paramsSchema.safeParse(params);
+  const validation = paramsSchema.safeParse({ feedId: feedIdParam });
   if (!validation.success) {
     return NextResponse.json(
       { error: "Invalid feed id" },
@@ -34,7 +35,7 @@ export async function POST(
 
   const log = await prisma.syncLog.create({
     data: {
-      jobType: "SYNC_EPISODES",
+      job_type: "SYNC_EPISODES",
       status: SyncStatus.RUNNING,
       message: `Sync episodes for feed ${feedId}`,
     },
@@ -47,7 +48,7 @@ export async function POST(
         where: { id: log.id },
         data: {
           status: SyncStatus.FAILED,
-          finishedAt: new Date(),
+          finished_at: new Date(),
           message: "Feed not found",
         },
       });
@@ -61,8 +62,8 @@ export async function POST(
       where: { id: log.id },
       data: {
         status: SyncStatus.SUCCESS,
-        finishedAt: new Date(),
-        podcastId: result.podcast.id,
+        finished_at: new Date(),
+        podcast_id: result.podcast.id,
         message: `Fetched ${result.episodeDelta} episodes`,
       },
     });
@@ -78,7 +79,7 @@ export async function POST(
       where: { id: log.id },
       data: {
         status: SyncStatus.FAILED,
-        finishedAt: new Date(),
+        finished_at: new Date(),
         error: { message: error instanceof Error ? error.message : "Unknown" },
       },
     });

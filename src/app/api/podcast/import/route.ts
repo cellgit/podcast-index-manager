@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { SyncStatus } from "@prisma/client";
 
 const bodySchema = z.object({
-  feedId: z.number().int().positive(),
+  feedUrl: z.string().url("请提供有效的 RSS Feed URL"),
 });
 
 export async function POST(request: Request) {
@@ -29,30 +29,58 @@ export async function POST(request: Request) {
 
   const client = createPodcastIndexClient();
   const service = new PodcastService(client, prisma);
-  const { feedId } = parsed.data;
+  const { feedUrl } = parsed.data;
 
   const log = await prisma.syncLog.create({
     data: {
-      job_type: "REGISTER_FEED",
+      job_type: "IMPORT_FEED",
       status: SyncStatus.RUNNING,
-      message: `Registering feed ${feedId}`,
+      message: `Importing feed from ${feedUrl}`,
     },
   });
 
   try {
-    const result = await service.syncPodcastByFeedId(feedId);
+    // Try to add the feed to PodcastIndex first
+    const result = await service.addPodcastByFeedUrl(feedUrl);
+
     if (!result) {
+      // If not found in PodcastIndex, try to get it directly
+      const fallbackResult = await service.syncPodcastByFeedUrl(feedUrl);
+
+      if (!fallbackResult) {
+        await prisma.syncLog.update({
+          where: { id: log.id },
+          data: {
+            status: SyncStatus.FAILED,
+            finished_at: new Date(),
+            message: "Feed not found in PodcastIndex",
+          },
+        });
+        return NextResponse.json(
+          { error: "Feed not found in PodcastIndex. Please make sure the URL is correct." },
+          { status: 404, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+
       await prisma.syncLog.update({
         where: { id: log.id },
         data: {
-          status: SyncStatus.FAILED,
+          status: SyncStatus.SUCCESS,
           finished_at: new Date(),
-          message: "Feed not found in PodcastIndex",
+          podcast_id: fallbackResult.podcast.id,
+          message: `Imported feed with ${fallbackResult.episodeDelta} episodes`,
         },
       });
+
       return NextResponse.json(
-        { error: "Feed not found" },
-        { status: 404, headers: { "Cache-Control": "no-store" } },
+        {
+          podcast: {
+            id: fallbackResult.podcast.id,
+            title: fallbackResult.podcast.title,
+            episodeDelta: fallbackResult.episodeDelta,
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } },
       );
     }
 
@@ -62,7 +90,7 @@ export async function POST(request: Request) {
         status: SyncStatus.SUCCESS,
         finished_at: new Date(),
         podcast_id: result.podcast.id,
-        message: `Registered feed with ${result.episodeDelta} episodes`,
+        message: `Imported and registered feed with ${result.episodeDelta} episodes`,
       },
     });
 

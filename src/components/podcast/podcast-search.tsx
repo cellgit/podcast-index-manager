@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Search, ExternalLink } from "lucide-react";
+import { Loader2, Search, ExternalLink, Rss, Info, Globe } from "lucide-react";
 import type { SearchPodcast } from "@/lib/podcast-index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,35 @@ type SearchResponsePayload = {
   };
 };
 
+function normalizeExternalUrl(value?: string | null) {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const candidate = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getEpisodeCount(feed: SearchPodcast) {
+  return feed.episode_count ?? feed.episodeCount ?? 0;
+}
+
+function getNewestPublishTime(feed: SearchPodcast) {
+  return feed.newest_item_publish_time ?? feed.newestItemPublishTime ?? null;
+}
+
 export function PodcastSearch({ trackedFeedIds }: PodcastSearchProps) {
   const router = useRouter();
   const [term, setTerm] = useState("");
@@ -42,7 +71,9 @@ export function PodcastSearch({ trackedFeedIds }: PodcastSearchProps) {
   const disabled = term.trim().length < 2;
 
   const sortedResults = useMemo(() => {
-    return [...results].sort((a, b) => (b.episodeCount ?? 0) - (a.episodeCount ?? 0));
+    return [...results].sort(
+      (a, b) => getEpisodeCount(b) - getEpisodeCount(a),
+    );
   }, [results]);
 
   async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
@@ -175,60 +206,118 @@ export function PodcastSearch({ trackedFeedIds }: PodcastSearchProps) {
 
       {sortedResults.length ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          {sortedResults.map((feed) => (
-            <Card key={feed.id} className="flex h-full flex-col">
-              <CardHeader className="space-y-2">
-                <CardTitle className="text-lg font-semibold leading-tight">
-                  {feed.title}
-                </CardTitle>
-                <CardDescription className="flex flex-wrap items-center gap-2 text-sm">
-                  {feed.author ? <span>{feed.author}</span> : null}
-                  {feed.language ? (
-                    <Badge variant="secondary" className="uppercase tracking-wide">
-                      {feed.language}
-                    </Badge>
-                  ) : null}
-                  <span className="text-muted-foreground">
-                    {feed.episodeCount ?? 0} 集
-                  </span>
-                  {feed.newestItemPublishTime ? (
-                    <span className="text-muted-foreground">
-                      最近更新 {new Date(feed.newestItemPublishTime * 1000).toLocaleDateString()}
-                    </span>
-                  ) : null}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-1 flex-col justify-between space-y-4">
-                {feed.description ? (
-                  <p className="text-sm text-muted-foreground">
-                    {feed.description.slice(0, 220)}
-                    {feed.description.length > 220 ? "…" : ""}
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">暂无简介。</p>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant={trackingIds.has(feed.id) ? "outline" : "default"}
-                    disabled={trackingIds.has(feed.id)}
-                    size="sm"
-                    onClick={() => handleTrack(feed)}
-                  >
-                    {trackingIds.has(feed.id) ? "已在目录中" : "加入目录"}
-                  </Button>
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={feed.url} target="_blank" rel="noreferrer">
-                      <span className="flex items-center gap-1">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        打开源链接
+          {sortedResults.map((feed) => {
+            const episodeCount = getEpisodeCount(feed);
+            const newestPublishTime = getNewestPublishTime(feed);
+            const websiteUrl = normalizeExternalUrl(
+              feed.link ?? feed.originalUrl ?? feed.original_url ?? null,
+            );
+            const rssUrl = normalizeExternalUrl(feed.url);
+            const podcastIndexUrl = `https://podcastindex.org/podcast/${feed.id}`;
+            const isTracked = trackingIds.has(feed.id);
+
+            return (
+              <Card key={feed.id} className="flex h-full flex-col">
+                <CardHeader className="space-y-2">
+                  <CardTitle className="text-lg font-semibold leading-tight">
+                    {feed.title}
+                  </CardTitle>
+                  <CardDescription className="flex flex-wrap items-center gap-2 text-sm">
+                    {feed.author ? <span>{feed.author}</span> : null}
+                    {feed.language ? (
+                      <Badge variant="secondary" className="uppercase tracking-wide">
+                        {feed.language}
+                      </Badge>
+                    ) : null}
+                    <span className="text-muted-foreground">{episodeCount} 集</span>
+                    {newestPublishTime ? (
+                      <span className="text-muted-foreground">
+                        最近更新 {new Date(newestPublishTime * 1000).toLocaleDateString()}
                       </span>
-                    </a>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    ) : null}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col justify-between space-y-4">
+                  {feed.description ? (
+                    <p className="text-sm text-muted-foreground">
+                      {feed.description.slice(0, 220)}
+                      {feed.description.length > 220 ? "…" : ""}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">暂无简介。</p>
+                  )}
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant={isTracked ? "outline" : "default"}
+                        disabled={isTracked}
+                        size="sm"
+                        onClick={() => handleTrack(feed)}
+                      >
+                        {isTracked ? "已在目录中" : "加入目录"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        asChild
+                        title="在 PodcastIndex.org 打开该播客"
+                      >
+                        <a href={podcastIndexUrl} target="_blank" rel="noreferrer">
+                          <span className="flex items-center gap-1">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            PodcastIndex
+                          </span>
+                        </a>
+                      </Button>
+                      {websiteUrl ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          asChild
+                          title="访问播客官方网站"
+                        >
+                          <a href={websiteUrl} target="_blank" rel="noreferrer">
+                            <span className="flex items-center gap-1">
+                              <Globe className="h-3.5 w-3.5" />
+                              官方网站
+                            </span>
+                          </a>
+                        </Button>
+                      ) : null}
+                      {rssUrl ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          title="适用于播客客户端或 RSS 阅读器"
+                        >
+                          <a href={rssUrl} target="_blank" rel="noreferrer">
+                            <span className="flex items-center gap-1">
+                              <Rss className="h-3.5 w-3.5" />
+                              RSS 源
+                            </span>
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
+                    {rssUrl ? (
+                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Rss className="h-3 w-3 text-primary" />
+                        建议在播客客户端或 RSS 阅读器中打开，浏览器直接访问会显示原始 XML。
+                      </p>
+                    ) : null}
+                  </div>
+                  {isTracked ? (
+                    <div className="flex items-start gap-2 rounded-md bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                      <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                      <span>已加入目录，可在下方&ldquo;目录概览&rdquo;中查看详情和节目列表</span>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       ) : null}
     </div>
