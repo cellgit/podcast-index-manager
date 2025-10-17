@@ -44,6 +44,7 @@ model Podcast {
   @@index([title], map: "podcasts_title_idx", type: Hash)
   @@index([language], map: "podcasts_language_idx")
   @@index([updated_at(sort: Desc)], map: "podcasts_updated_idx")
+  @@map("podcasts")
 }
 
 model Episode {
@@ -77,6 +78,7 @@ model Episode {
   @@index([podcast_id, date_published(sort: Desc)], map: "episodes_podcast_published_idx")
   @@index([date_published(sort: Desc)], map: "episodes_published_idx")
   @@index([title], map: "episodes_title_idx", type: Hash)
+  @@map("episodes")
 }
 
 model SyncLog {
@@ -93,6 +95,7 @@ model SyncLog {
 
   @@index([status, started_at(sort: Desc)], map: "sync_logs_status_started_idx")
   @@index([podcast_id, started_at(sort: Desc)], map: "sync_logs_podcast_started_idx")
+  @@map("sync_logs")
 }
 
 enum SyncStatus {
@@ -106,4 +109,6 @@ model SyncCursor {
   id         String   @id
   cursor     String
   updated_at DateTime @updatedAt
+
+  @@map("sync_cursors")
 }
