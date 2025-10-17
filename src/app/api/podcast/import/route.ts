@@ -57,7 +57,10 @@ export async function POST(request: Request) {
           },
         });
         return NextResponse.json(
-          { error: "Feed not found in PodcastIndex. Please make sure the URL is correct." },
+          {
+            error:
+              "Feed not found in PodcastIndex. Please make sure the URL is correct.",
+          },
           { status: 404, headers: { "Cache-Control": "no-store" } },
         );
       }
@@ -78,6 +81,7 @@ export async function POST(request: Request) {
             id: fallbackResult.podcast.id,
             title: fallbackResult.podcast.title,
             episodeDelta: fallbackResult.episodeDelta,
+            podcastIndexId: fallbackResult.podcast.podcast_index_id,
           },
         },
         { headers: { "Cache-Control": "no-store" } },
@@ -100,6 +104,7 @@ export async function POST(request: Request) {
           id: result.podcast.id,
           title: result.podcast.title,
           episodeDelta: result.episodeDelta,
+          podcastIndexId: result.podcast.podcast_index_id,
         },
       },
       { headers: { "Cache-Control": "no-store" } },

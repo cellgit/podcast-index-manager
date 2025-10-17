@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Search, ExternalLink, Rss, Info, Globe } from "lucide-react";
+import {
+  Loader2,
+  Search,
+  ExternalLink,
+  Rss,
+  Info,
+  Globe,
+  ArrowDownCircle,
+} from "lucide-react";
 import type { SearchPodcast } from "@/lib/podcast-index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +28,11 @@ type PodcastSearchProps = {
 };
 
 type SearchState = {
+  status: "idle" | "loading" | "error" | "success";
+  message?: string;
+};
+
+type ImportState = {
   status: "idle" | "loading" | "error" | "success";
   message?: string;
 };
@@ -64,11 +77,14 @@ function getNewestPublishTime(feed: SearchPodcast) {
 export function PodcastSearch({ trackedFeedIds }: PodcastSearchProps) {
   const router = useRouter();
   const [term, setTerm] = useState("");
+  const [feedUrl, setFeedUrl] = useState("");
   const [results, setResults] = useState<SearchPodcast[]>([]);
   const [searchState, setSearchState] = useState<SearchState>({ status: "idle" });
+  const [importState, setImportState] = useState<ImportState>({ status: "idle" });
   const [trackingIds, setTrackingIds] = useState(new Set(trackedFeedIds));
 
   const disabled = term.trim().length < 2;
+  const importDisabled = feedUrl.trim().length < 8;
 
   const sortedResults = useMemo(() => {
     return [...results].sort(
@@ -120,6 +136,76 @@ export function PodcastSearch({ trackedFeedIds }: PodcastSearchProps) {
     }
   }
 
+  async function handleImport(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = feedUrl.trim();
+    if (!value || importDisabled) {
+      return;
+    }
+    setImportState({ status: "loading", message: "正在导入订阅源…" });
+    try {
+      const response = await fetch("/api/podcast/import", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ feedUrl: value }),
+      });
+      let payload: unknown = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+      if (!response.ok) {
+        const serverMessage =
+          typeof payload === "object" &&
+          payload !== null &&
+          "error" in payload &&
+          typeof (payload as { error: unknown }).error === "string"
+            ? (payload as { error: string }).error
+            : `导入失败（${response.status}）`;
+        throw new Error(serverMessage);
+      }
+
+      const data = (payload ?? {}) as {
+        podcast?: {
+          id?: number;
+          title?: string;
+          episodeDelta?: number;
+          podcastIndexId?: number | null;
+        };
+      };
+
+      if (typeof data.podcast?.podcastIndexId === "number") {
+        const { podcastIndexId } = data.podcast;
+        setTrackingIds((prev) => {
+          const next = new Set(prev);
+          next.add(podcastIndexId);
+          return next;
+        });
+      }
+
+      setImportState({
+        status: "success",
+        message:
+          data.podcast?.title
+            ? `已加入《${data.podcast.title}》，导入 ${
+                data.podcast.episodeDelta ?? 0
+              } 条节目`
+            : "订阅源已导入目录",
+      });
+      setFeedUrl("");
+      router.refresh();
+    } catch (error) {
+      setImportState({
+        status: "error",
+        message:
+          error instanceof Error ? error.message : "无法导入该订阅源",
+      });
+    }
+  }
+
   async function handleTrack(feed: SearchPodcast) {
     if (!feed.id || trackingIds.has(feed.id)) {
       return;
@@ -159,38 +245,95 @@ export function PodcastSearch({ trackedFeedIds }: PodcastSearchProps) {
 
   return (
     <div className="space-y-6">
-      <form
-        className="flex flex-col gap-3 sm:flex-row"
-        onSubmit={handleSearch}
-      >
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="按标题、作者或主理人搜索"
-            value={term}
-            onChange={(event) => setTerm(event.target.value)}
-            aria-label="搜索 Podcast 目录"
-            className="w-full pl-9"
-          />
-        </div>
-        <Button
-          type="submit"
-          className="w-full sm:w-auto"
-          disabled={disabled || searchState.status === "loading"}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <form
+          className="flex flex-col gap-3 sm:flex-row"
+          onSubmit={handleSearch}
         >
-          {searchState.status === "loading" ? (
-            <span className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              正在搜索…
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Search className="h-4 w-4" />
-              搜索目录
-            </span>
-          )}
-        </Button>
-      </form>
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="按标题、作者或主理人搜索"
+              value={term}
+              onChange={(event) => setTerm(event.target.value)}
+              aria-label="搜索 Podcast 目录"
+              className="w-full pl-9"
+            />
+          </div>
+          <Button
+            type="submit"
+            className="w-full sm:w-auto"
+            disabled={disabled || searchState.status === "loading"}
+          >
+            {searchState.status === "loading" ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                正在搜索…
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Search className="h-4 w-4" />
+                搜索目录
+              </span>
+            )}
+          </Button>
+        </form>
+
+        <Card className="border-dashed border-primary/40 bg-primary/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ArrowDownCircle className="h-5 w-5 text-primary" />
+              按 RSS URL 导入
+            </CardTitle>
+            <CardDescription>
+              既可导入目录，也会触发抓取并同步最新节目。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-3" onSubmit={handleImport}>
+              <Input
+                placeholder="https://example.com/podcast/feed.xml"
+                value={feedUrl}
+                onChange={(event) => setFeedUrl(event.target.value)}
+                aria-label="Podcast RSS Feed URL"
+              />
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={
+                  importDisabled || importState.status === "loading"
+                }
+              >
+                {importState.status === "loading" ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    正在导入…
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <ArrowDownCircle className="h-4 w-4" />
+                    导入到目录
+                  </span>
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                支持 PodcastIndex 官方接口，若 RSS 未被收录将自动尝试提交。
+              </p>
+              {importState.message ? (
+                <div
+                  className={
+                    importState.status === "error"
+                      ? "rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                      : "rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary"
+                  }
+                >
+                  {importState.message}
+                </div>
+              ) : null}
+            </form>
+          </CardContent>
+        </Card>
+      </div>
 
       {searchState.message ? (
         <div
