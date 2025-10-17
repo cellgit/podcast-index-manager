@@ -12,72 +12,123 @@ datasource db {
 }
 
 model Podcast {
-  id                    Int       @id @default(autoincrement())
-  podcast_index_id      Int?      @unique(map: "podcasts_podcast_index_id_unique")
-  podcast_guid          String?   @unique(map: "podcasts_podcast_guid_unique")
-  title                 String
-  author                String?
-  owner_name            String?
-  language              String?   @db.VarChar(32)
-  image                 String?
-  artwork               String?
-  description           String?   @db.Text
-  categories            Json?
-  last_update_time      DateTime?
-  last_crawl_time       DateTime?
-  last_parse_time       DateTime?
-  newest_item_published DateTime?
-  episode_count         Int?      @default(0)
-  explicit              Boolean?  @default(false)
-  medium                String?   @db.VarChar(32)
-  locked                Boolean?  @default(false)
-  feed_url              String?   @unique(map: "podcasts_feed_url_unique")
-  website_url           String?
-  funding               Json?
-  value                 Json?
-  created_at            DateTime  @default(now())
-  updated_at            DateTime  @updatedAt
+  id                         Int       @id @default(autoincrement())
+  podcast_index_id           Int?      @unique(map: "podcasts_podcast_index_id_unique")
+  podcast_guid               String?   @unique(map: "podcasts_podcast_guid_unique")
+  title                      String
+  url                        String?   @unique(map: "podcasts_url_unique")
+  original_url               String?
+  link                       String?
+  description                String?   @db.Text
+  author                     String?
+  owner_name                 String?
+  owner_email                String?
+  image                      String?
+  artwork                    String?
+  last_update_time           DateTime?
+  last_crawl_time            DateTime?
+  last_parse_time            DateTime?
+  last_good_http_status_time DateTime?
+  last_http_status           Int?
+  content_type               String?
+  itunes_id                  Int?
+  itunes_type                String?
+  generator                  String?
+  language                   String?   @db.VarChar(64)
+  explicit                   Boolean?  @default(false)
+  type                       Int?
+  medium                     String?   @db.VarChar(32)
+  dead                       Int?      @default(0)
+  priority                   Int?
+  in_polling_queue           Boolean?
+  chash                      String?
+  created_on                 DateTime?
+  episode_count              Int?      @default(0)
+  crawl_errors               Int?      @default(0)
+  parse_errors               Int?      @default(0)
+  locked                     Boolean?  @default(false)
+  image_url_hash             BigInt?
+  newest_item_pubdate        DateTime?
+  popularity                 Int?
+  trend_score                Int?
+  duplicate_of_feed_id       Int?
+  value_created_on           DateTime?
+  value_block                String?   @db.Text
+  funding_url                String?
+  funding_message            String?
+  value_model_type           String?
+  value_model_method         String?
+  value_model_suggested      String?
+  created_at                 DateTime  @default(now())
+  updated_at                 DateTime  @updatedAt
 
-  episodes              Episode[]
-  sync_logs             SyncLog[]
+  episodes           Episode[]
+  sync_logs          SyncLog[]
+  categories         PodcastCategory[]
+  value_destinations PodcastValueDestination[]
 
   @@index([title], map: "podcasts_title_idx", type: Hash)
   @@index([language], map: "podcasts_language_idx")
   @@index([updated_at(sort: Desc)], map: "podcasts_updated_idx")
+  @@index([podcast_index_id], map: "podcasts_index_id_idx")
+  @@index([itunes_id], map: "podcasts_itunes_idx")
   @@map("podcasts")
 }
 
 model Episode {
-  id                Int       @id @default(autoincrement())
-  podcast_id        Int
-  podcast           Podcast   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
-  podcast_index_id  BigInt?   @unique(map: "episodes_podcast_index_id_unique")
-  guid              String?   @db.VarChar(255)
-  title             String
-  description       String?   @db.Text
-  link              String?
-  enclosure_url     String?   @db.Text
-  enclosure_type    String?   @db.VarChar(128)
-  enclosure_length  Int?      @default(0)
-  duration          Int?
-  explicit          Boolean?  @default(false)
-  image             String?
-  season            Int?
-  episode           Int?
-  transcript_url    String?
-  chapters_url      String?
-  persons           Json?
-  social_interact   Json?
-  value             Json?
-  date_published    DateTime?
-  date_crawled      DateTime?
-  created_at        DateTime  @default(now())
-  updated_at        DateTime  @updatedAt
+  id               Int       @id @default(autoincrement())
+  podcast_id       Int
+  podcast          Podcast   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
+  feed_id          Int?
+  podcast_index_id BigInt?   @unique(map: "episodes_podcast_index_id_unique")
+  guid             String?   @db.VarChar(512)
+  title            String
+  description      String?   @db.Text
+  link             String?
+  date_published   DateTime?
+  date_crawled     DateTime?
+  enclosure_url    String?   @db.Text
+  enclosure_type   String?   @db.VarChar(128)
+  enclosure_length Int?      @default(0)
+  duration         Int?
+  explicit         Boolean?  @default(false)
+  episode          Int?
+  episode_type     String?   @db.VarChar(32)
+  season           Int?
+  image            String?
+  image_url_hash   BigInt?
+  feed_itunes_id   Int?
+  feed_image       String?
+  feed_image_url_hash BigInt?
+  feed_url         String?
+  feed_title       String?
+  feed_author      String?
+  feed_language    String?
+  feed_dead        Int?
+  feed_duplicate_of Int?
+  transcript_url   String?
+  chapters_url     String?
+  content_link     String?
+  start_time       DateTime?
+  end_time         DateTime?
+  status           String?   @db.VarChar(32)
+  value_model_type String?
+  value_model_method String?
+  value_model_suggested String?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  transcripts         EpisodeTranscript[]
+  persons             EpisodePerson[]
+  soundbites          EpisodeSoundbite[]
+  social_interactions EpisodeSocialInteraction[]
+  value_destinations  EpisodeValueDestination[]
 
   @@unique([podcast_id, guid], map: "episodes_podcast_guid_unique")
   @@index([podcast_id, date_published(sort: Desc)], map: "episodes_podcast_published_idx")
   @@index([date_published(sort: Desc)], map: "episodes_published_idx")
   @@index([title], map: "episodes_title_idx", type: Hash)
+  @@index([feed_id], map: "episodes_feed_idx")
   @@map("episodes")
 }
 
@@ -111,4 +162,127 @@ model SyncCursor {
   updated_at DateTime @updatedAt
 
   @@map("sync_cursors")
+}
+
+model Category {
+  id         Int      @id
+  name       String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  podcast_categories PodcastCategory[]
+
+  @@map("categories")
+}
+
+model PodcastCategory {
+  podcast_id  Int
+  category_id Int
+  podcast     Podcast  @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
+  category    Category @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  created_at  DateTime @default(now())
+
+  @@id([podcast_id, category_id])
+  @@index([category_id], map: "podcast_categories_category_idx")
+  @@map("podcast_categories")
+}
+
+model PodcastValueDestination {
+  id           Int      @id @default(autoincrement())
+  podcast_id   Int
+  podcast      Podcast  @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
+  name         String?
+  address      String
+  type         String?
+  split        Int?
+  fee          Boolean?
+  custom_key   String?
+  custom_value String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([podcast_id], map: "podcast_value_destinations_podcast_idx")
+  @@map("podcast_value_destinations")
+}
+
+model EpisodeTranscript {
+  id         Int      @id @default(autoincrement())
+  episode_id Int
+  episode    Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
+  url        String
+  type       String?
+  language   String?
+  rel        String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([episode_id, url], map: "episode_transcripts_episode_url_unique")
+  @@index([episode_id], map: "episode_transcripts_episode_idx")
+  @@map("episode_transcripts")
+}
+
+model EpisodePerson {
+  id         Int      @id @default(autoincrement())
+  episode_id Int
+  episode    Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
+  person_index_id Int?
+  name       String
+  role       String?
+  group_name String?  @map("group")
+  href       String?
+  img        String?
+  metadata   Json?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([episode_id], map: "episode_persons_episode_idx")
+  @@map("episode_persons")
+}
+
+model EpisodeSoundbite {
+  id         Int      @id @default(autoincrement())
+  episode_id Int
+  episode    Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
+  start_time Int
+  duration   Int
+  title      String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([episode_id], map: "episode_soundbites_episode_idx")
+  @@map("episode_soundbites")
+}
+
+model EpisodeSocialInteraction {
+  id          Int      @id @default(autoincrement())
+  episode_id  Int
+  episode     Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
+  url         String
+  protocol    String
+  account_id  String?
+  account_url String?
+  priority    Int?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([episode_id], map: "episode_social_interactions_episode_idx")
+  @@map("episode_social_interactions")
+}
+
+model EpisodeValueDestination {
+  id           Int      @id @default(autoincrement())
+  episode_id   Int
+  episode      Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
+  name         String?
+  address      String
+  type         String?
+  split        Int?
+  fee          Boolean?
+  custom_key   String?
+  custom_value String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([episode_id], map: "episode_value_destinations_episode_idx")
+  @@map("episode_value_destinations")
 }

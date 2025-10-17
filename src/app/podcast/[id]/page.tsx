@@ -33,12 +33,13 @@ export default async function PodcastDetailPage({ params, searchParams }: Props)
     return <div>Database not configured</div>;
   }
 
+  const db = prisma as any;
   const id = parseInt(idParam, 10);
   if (isNaN(id)) {
     notFound();
   }
 
-  const podcast = await prisma.podcast.findUnique({
+  const podcast = await db.podcast.findUnique({
     where: { id },
     include: {
       episodes: {
@@ -57,7 +58,7 @@ export default async function PodcastDetailPage({ params, searchParams }: Props)
     notFound();
   }
 
-  const totalEpisodes = await prisma.episode.count({
+  const totalEpisodes = await db.episode.count({
     where: { podcast_id: id },
   });
 
@@ -107,28 +108,28 @@ export default async function PodcastDetailPage({ params, searchParams }: Props)
                     <PlayCircle className="h-4 w-4" />
                     <span>{podcast.episode_count || totalEpisodes} 集</span>
                   </div>
-                  {podcast.newest_item_published ? (
+                  {podcast.newest_item_pubdate ? (
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Calendar className="h-4 w-4" />
                       <span>
-                        最近更新: {new Date(podcast.newest_item_published).toLocaleDateString()}
+                        最近更新: {new Date(podcast.newest_item_pubdate).toLocaleDateString()}
                       </span>
                     </div>
                   ) : null}
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  {podcast.feed_url ? (
+                  {podcast.url ? (
                     <Button variant="outline" size="sm" asChild>
-                      <a href={podcast.feed_url} target="_blank" rel="noreferrer">
+                      <a href={podcast.url} target="_blank" rel="noreferrer">
                         <Rss className="mr-2 h-4 w-4" />
                         RSS Feed
                       </a>
                     </Button>
                   ) : null}
-                  {podcast.website_url ? (
+                  {podcast.link ? (
                     <Button variant="outline" size="sm" asChild>
-                      <a href={podcast.website_url} target="_blank" rel="noreferrer">
+                      <a href={podcast.link} target="_blank" rel="noreferrer">
                         <Globe className="mr-2 h-4 w-4" />
                         网站
                       </a>
@@ -147,7 +148,7 @@ export default async function PodcastDetailPage({ params, searchParams }: Props)
                   <CardTitle className="text-sm">同步历史</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {podcast.sync_logs.map((log) => (
+                  {podcast.sync_logs.map((log: any) => (
                     <div key={log.id} className="text-xs space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{log.job_type}</span>
@@ -214,7 +215,7 @@ export default async function PodcastDetailPage({ params, searchParams }: Props)
                         </TableCell>
                       </TableRow>
                     ) : (
-                      podcast.episodes.map((episode) => (
+                        podcast.episodes.map((episode: any) => (
                         <TableRow key={episode.id}>
                           <TableCell>
                             <div className="space-y-1">

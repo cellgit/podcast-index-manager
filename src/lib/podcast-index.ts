@@ -66,32 +66,136 @@ export type SearchPodcast = {
   itunes_id?: number;
 };
 
+export type PodcastValueDestinationPayload = {
+  name?: string;
+  address: string;
+  type?: string;
+  split?: number | string;
+  fee?: boolean;
+  customKey?: string;
+  customValue?: string;
+};
+
+export type PodcastValueModelPayload = {
+  type?: string;
+  method?: string;
+  suggested?: string;
+};
+
+export type PodcastValuePayload = {
+  model?: PodcastValueModelPayload | null;
+  destinations?: PodcastValueDestinationPayload[];
+} | null;
+
+export type PodcastFundingPayload = {
+  url?: string;
+  message?: string;
+} | null;
+
+export type PodcastFeedDetail = {
+  id: number;
+  podcast_guid?: string;
+  podcastGuid?: string;
+  title: string;
+  url: string;
+  original_url?: string;
+  originalUrl?: string;
+  link?: string;
+  description?: string;
+  author?: string;
+  owner_name?: string;
+  ownerName?: string;
+  image?: string;
+  artwork?: string;
+  last_update_time?: number;
+  lastUpdateTime?: number;
+  last_crawl_time?: number;
+  lastCrawlTime?: number;
+  last_parse_time?: number;
+  lastParseTime?: number;
+  last_good_http_status_time?: number;
+  lastGoodHttpStatusTime?: number;
+  last_http_status?: number;
+  lastHttpStatus?: number;
+  content_type?: string;
+  contentType?: string;
+  itunes_id?: number;
+  itunesId?: number;
+  itunes_type?: string;
+  itunesType?: string;
+  generator?: string;
+  language?: string;
+  explicit?: boolean | number;
+  type?: number;
+  medium?: string;
+  dead?: number;
+  chash?: string;
+  episode_count?: number;
+  episodeCount?: number;
+  crawl_errors?: number;
+  crawlErrors?: number;
+  parse_errors?: number;
+  parseErrors?: number;
+  locked?: boolean | number;
+  image_url_hash?: number | string;
+  imageUrlHash?: number | string;
+  newest_item_pubdate?: number;
+  newest_item_publish_time?: number;
+  newestItemPubdate?: number;
+  newestItemPublishTime?: number;
+  value_created_on?: number;
+  valueCreatedOn?: number;
+  popularity?: number;
+  trend_score?: number;
+  trendScore?: number;
+  priority?: number;
+  in_polling_queue?: number | boolean;
+  inPollingQueue?: number | boolean;
+  created_on?: number;
+  createdOn?: number;
+  duplicate_of?: number;
+  duplicateOf?: number;
+  feedDuplicateOf?: number;
+  value_block?: string;
+  valueBlock?: string;
+  categories?: Record<string, string>;
+  funding?: PodcastFundingPayload;
+  value?: PodcastValuePayload;
+};
+
 export type PodcastDetail = {
-  feed: {
-    id: number;
-    podcast_guid?: string;
-    title: string;
-    url: string;
-    original_url?: string;
-    link?: string;
-    description?: string;
-    author?: string;
-    owner_name?: string;
-    image?: string;
-    artwork?: string;
-    last_update_time?: number;
-    last_crawl_time?: number;
-    last_parse_time?: number;
-    newest_item_publish_time?: number;
-    episode_count?: number;
-    explicit?: boolean;
-    medium?: string;
-    locked?: boolean;
-    categories?: Record<string, string>;
-    language?: string;
-    funding?: unknown;
-    value?: unknown;
-  };
+  feed: PodcastFeedDetail;
+};
+
+export type EpisodeTranscriptPayload = {
+  url: string;
+  type?: string;
+  language?: string;
+  rel?: string;
+};
+
+export type EpisodePersonPayload = {
+  name: string;
+  role?: string;
+  group?: string;
+  href?: string;
+  img?: string;
+  // 捕获额外字段，避免解析失败
+  [key: string]: unknown;
+};
+
+export type EpisodeSoundbitePayload = {
+  startTime?: number;
+  duration?: number;
+  title?: string;
+};
+
+export type EpisodeSocialInteractPayload = {
+  url: string;
+  protocol: string;
+  accountId?: string;
+  accountUrl?: string;
+  priority?: number;
 };
 
 export type EpisodeDetail = {
@@ -101,24 +205,62 @@ export type EpisodeDetail = {
   description?: string;
   guid?: string;
   date_published?: number;
+  datePublished?: number;
   date_crawled?: number;
+  dateCrawled?: number;
   enclosure_url?: string;
+  enclosureUrl?: string;
   enclosure_type?: string;
+  enclosureType?: string;
   enclosure_length?: number;
+  enclosureLength?: number;
   duration?: number;
   explicit?: number;
   episode?: number;
+  episode_type?: string;
+  episodeType?: string;
   season?: number;
   image?: string;
-  feed_id: number;
+  image_url_hash?: number | string;
+  imageUrlHash?: number | string;
+  feed_id?: number;
+  feedId?: number;
+  feed_itunes_id?: number;
+  feedItunesId?: number;
+  feedImage?: string;
+  feed_image?: string;
+  feed_image_url_hash?: number | string;
+  feedImageUrlHash?: number | string;
   feed_title?: string;
+  feedTitle?: string;
   feed_url?: string;
+  feedUrl?: string;
   feed_language?: string;
+  feedLanguage?: string;
+  feed_author?: string;
+  feedAuthor?: string;
+  feed_dead?: number;
+  feedDead?: number;
+  feed_duplicate_of?: number;
+  feedDuplicateOf?: number;
   transcript_url?: string;
+  transcriptUrl?: string;
   chapters_url?: string;
-  persons?: unknown;
-  social_interact?: unknown;
-  value?: unknown;
+  chaptersUrl?: string;
+  transcripts?: EpisodeTranscriptPayload[] | null;
+  persons?: EpisodePersonPayload[] | null;
+  soundbite?: EpisodeSoundbitePayload | null;
+  soundbites?: EpisodeSoundbitePayload[] | null;
+  social_interact?: EpisodeSocialInteractPayload[] | null;
+  socialInteract?: EpisodeSocialInteractPayload[] | null;
+  value?: PodcastValuePayload | null;
+  start_time?: number;
+  startTime?: number;
+  end_time?: number;
+  endTime?: number;
+  status?: string;
+  content_link?: string;
+  contentLink?: string;
 };
 
 type RequestInitAugmented = RequestInit & { skipAuth?: boolean };
