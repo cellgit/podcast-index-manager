@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 
 import { SystemHealthCard } from "@/components/system/system-health-card";
+import { IntegrationActions } from "@/components/system/integration-actions";
 import { CopyCommandButton } from "@/components/system/copy-command-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { pingRedisConnection } from "@/jobs/config";
 
 const JOB_COMMAND = "npm run job:sync-recent";
 const CRON_EXAMPLE = `# 每 10 分钟同步一次 PodcastIndex 增量更新
@@ -15,11 +17,27 @@ export default async function SettingsPage() {
     return null;
   }
 
+  const redisConfigured = Boolean(process.env.REDIS_URL);
+  let redisReachable = false;
+  if (redisConfigured) {
+    try {
+      await pingRedisConnection();
+      redisReachable = true;
+    } catch (error) {
+      console.error("Redis ping failed", error);
+      redisReachable = false;
+    }
+  }
+
+  const slackConfigured = Boolean(process.env.SLACK_WEBHOOK_URL);
+
   const envStatus = {
     databaseUrl: Boolean(process.env.DATABASE_URL),
     apiKey: Boolean(process.env.PODCASTINDEX_API_KEY),
     apiSecret: Boolean(process.env.PODCASTINDEX_API_SECRET),
     userAgent: Boolean(process.env.PODCASTINDEX_USER_AGENT),
+    redisUrl: redisConfigured,
+    slackWebhook: slackConfigured,
   };
 
   return (
@@ -47,11 +65,31 @@ export default async function SettingsPage() {
               <EnvRow label="PODCASTINDEX_API_KEY" healthy={envStatus.apiKey} />
               <EnvRow label="PODCASTINDEX_API_SECRET" healthy={envStatus.apiSecret} />
               <EnvRow label="PODCASTINDEX_USER_AGENT" healthy={envStatus.userAgent} />
+              <EnvRow label="REDIS_URL" healthy={envStatus.redisUrl} />
+              <EnvRow label="SLACK_WEBHOOK_URL" healthy={envStatus.slackWebhook} />
               <p className="text-xs">
                 若任一项显示“未配置”，请更新
                 <code className="mx-1 rounded bg-muted px-1 py-0.5 text-[11px]">.env.local</code>
                 后重新启动服务。
               </p>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card className="border-border/70">
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-lg">队列与通知</CardTitle>
+              <CardDescription>
+                验证 Redis 队列和 Slack Webhook，确保自动化与告警可以正常运行。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <IntegrationActions
+                redisConfigured={redisConfigured}
+                redisReachable={redisReachable}
+                slackConfigured={slackConfigured}
+              />
             </CardContent>
           </Card>
         </section>
