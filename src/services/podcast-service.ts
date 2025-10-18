@@ -666,21 +666,25 @@ export class PodcastService {
   }
 
   async discoverTrending(options: { max?: number; lang?: string; cat?: string } = {}) {
-    return this.client.trendingPodcasts(options);
+    const feeds = await this.client.trendingPodcasts(options);
+    return this.ensureEpisodeCounts(feeds);
   }
 
   async discoverRecentFeeds(options: { max?: number; since?: number; lang?: string } = {}) {
-    return this.client.recentFeeds(options);
+    const feeds = await this.client.recentFeeds(options);
+    return this.ensureEpisodeCounts(feeds);
   }
 
   async discoverByMedium(options: { medium: string; max?: number; startAt?: number }) {
-    return this.client.podcastsByMedium(options);
+    const feeds = await this.client.podcastsByMedium(options);
+    return this.ensureEpisodeCounts(feeds);
   }
 
   async discoverByTag(
     options: { tag: "podcast-value" | "podcast-valueTimeSplit"; max?: number; startAt?: number },
   ) {
-    return this.client.podcastsByTag(options);
+    const feeds = await this.client.podcastsByTag(options);
+    return this.ensureEpisodeCounts(feeds);
   }
 
   private async syncPodcastCategories(
@@ -827,6 +831,209 @@ export class PodcastService {
     return episodes;
   }
 
+  private async ensureEpisodeCounts<T extends EpisodeCountSource>(feeds: T[]): Promise<T[]> {
+    if (!feeds.length) {
+      return feeds;
+    }
+
+    const missing = feeds.filter((feed) => this.extractEpisodeCount(feed) === null);
+    if (!missing.length) {
+      return feeds.map((feed) => this.applyEpisodeCount(feed, this.extractEpisodeCount(feed)));
+    }
+
+    const details = await chunkedAll(missing, 5, async (feed) => {
+      try {
+        const detail = await this.fetchFeedDetail(feed);
+        return { feed, detail };
+      } catch (error) {
+        console.warn("ensureEpisodeCounts: failed to fetch detail", { feed, error });
+        return { feed, detail: null };
+      }
+    });
+
+    const countMap = new Map<string, number>();
+    for (const { feed, detail } of details) {
+      if (!detail) {
+        continue;
+      }
+      const key = this.resolveFeedKey(feed) ?? this.resolveFeedKey(detail);
+      const count = this.extractEpisodeCount(detail);
+      if (key && count !== null) {
+        countMap.set(key, count);
+      }
+    }
+
+    return feeds.map((feed) => {
+      const existing = this.extractEpisodeCount(feed);
+      if (existing !== null) {
+        return this.applyEpisodeCount(feed, existing);
+      }
+      const key = this.resolveFeedKey(feed);
+      if (key && countMap.has(key)) {
+        return this.applyEpisodeCount(feed, countMap.get(key)!);
+      }
+      return feed;
+    });
+  }
+
+  private async fetchFeedDetail(source: EpisodeCountSource) {
+    const feedId = this.pickNumericValue(
+      source.id,
+      source.feedId,
+      source.feed_id,
+      source.podcastIndexId,
+      source.podcast_index_id,
+    );
+    if (feedId !== null) {
+      const detail = await this.client.podcastByFeedId(feedId);
+      if (detail) {
+        return detail;
+      }
+    }
+
+    const guid = this.pickStringValue(source.podcast_guid, source.podcastGuid, source.guid);
+    if (guid) {
+      const detail = await this.client.podcastByGuid(guid);
+      if (detail) {
+        return detail;
+      }
+    }
+
+    const url = this.pickStringValue(
+      source.url,
+      source.feedUrl,
+      source.feed_url,
+      source.original_url,
+      source.originalUrl,
+    );
+    if (url) {
+      const detail = await this.client.podcastByFeedUrl(url);
+      if (detail) {
+        return detail;
+      }
+    }
+
+    const itunesId = this.pickNumericValue(
+      source.itunes_id,
+      source.itunesId,
+      source.feedItunesId,
+      source.feed_itunes_id,
+    );
+    if (itunesId !== null) {
+      const detail = await this.client.podcastByItunesId(itunesId);
+      if (detail) {
+        return detail;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveFeedKey(
+    source: EpisodeCountSource | PodcastFeedDetail | null | undefined,
+  ): string | null {
+    if (!source) {
+      return null;
+    }
+    const feedId = this.pickNumericValue(
+      source.id,
+      source.feedId,
+      source.feed_id,
+      source.podcastIndexId,
+      source.podcast_index_id,
+    );
+    if (feedId !== null) {
+      return `feed:${feedId}`;
+    }
+    const guid = this.pickStringValue(source.podcast_guid, source.podcastGuid, source.guid);
+    if (guid) {
+      return `guid:${guid}`;
+    }
+    const url = this.pickStringValue(
+      source.url,
+      source.feedUrl,
+      source.feed_url,
+      source.original_url,
+      source.originalUrl,
+    );
+    if (url) {
+      return `url:${url}`;
+    }
+    const itunesId = this.pickNumericValue(
+      source.itunes_id,
+      source.itunesId,
+      source.feedItunesId,
+      source.feed_itunes_id,
+    );
+    if (itunesId !== null) {
+      return `itunes:${itunesId}`;
+    }
+    return null;
+  }
+
+  private extractEpisodeCount(
+    source: EpisodeCountSource | PodcastFeedDetail | null | undefined,
+  ): number | null {
+    if (!source) {
+      return null;
+    }
+    const numeric = this.pickNumericValue(
+      source.episode_count,
+      source.episodeCount,
+      (source as { episodecount?: number | string | null })?.episodecount,
+      (source as { totalEpisodes?: number | string | null })?.totalEpisodes,
+      (source as { items_total?: number | string | null })?.items_total,
+    );
+    if (numeric !== null) {
+      return numeric;
+    }
+
+    const items = (source as { items?: unknown }).items;
+    if (Array.isArray(items)) {
+      return items.length;
+    }
+
+    return null;
+  }
+
+  private applyEpisodeCount<T extends EpisodeCountSource>(feed: T, count: number | null): T {
+    if (count === null) {
+      return feed;
+    }
+    const next = { ...feed } as EpisodeCountSource;
+    next.episode_count = count;
+    next.episodeCount = count;
+    return next as T;
+  }
+
+  private pickNumericValue(...values: Array<unknown>): number | null {
+    for (const value of values) {
+      const numericSource = extractNumeric(value);
+      if (numericSource === undefined) {
+        continue;
+      }
+      const numeric =
+        typeof numericSource === "bigint"
+          ? Number(numericSource)
+          : typeof numericSource === "number"
+            ? numericSource
+            : Number(numericSource);
+      if (Number.isFinite(numeric)) {
+        return numeric;
+      }
+    }
+    return null;
+  }
+
+  private pickStringValue(...values: Array<unknown>): string | null {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    return null;
+  }
+
   private async upsertEpisode(
     podcastId: number,
     item: EpisodeDetail,
@@ -929,3 +1136,25 @@ export class PodcastService {
     }
   }
 }
+
+type EpisodeCountSource = {
+  id?: number | string | null;
+  feedId?: number | string | null;
+  feed_id?: number | string | null;
+  podcastIndexId?: number | string | null;
+  podcast_index_id?: number | string | null;
+  itunes_id?: number | string | null;
+  itunesId?: number | string | null;
+  feedItunesId?: number | string | null;
+  feed_itunes_id?: number | string | null;
+  url?: string | null;
+  feedUrl?: string | null;
+  feed_url?: string | null;
+  original_url?: string | null;
+  originalUrl?: string | null;
+  podcast_guid?: string | null;
+  podcastGuid?: string | null;
+  guid?: string | null;
+  episode_count?: number | string | null;
+  episodeCount?: number | string | null;
+};

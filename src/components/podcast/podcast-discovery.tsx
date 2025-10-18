@@ -290,36 +290,41 @@ export function PodcastDiscovery() {
                     <div className="flex min-w-0 flex-1 flex-col gap-2">
                       <div className="flex flex-wrap items-center gap-2">
                         {detailHref ? (
-                          <Link
-                            href={detailHref}
-                            className="text-sm font-semibold text-foreground transition hover:text-primary"
-                          >
-                            {item.title}
-                          </Link>
-                        ) : (
-                          <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                        )}
-                        {item.medium ? (
-                          <Badge variant="outline" className="uppercase tracking-wide">
-                            {item.medium}
-                          </Badge>
-                        ) : null}
-                        {item.language ? (
-                          <Badge variant="secondary" className="uppercase tracking-wide">
-                            {item.language}
-                          </Badge>
-                        ) : null}
-                        {item.hasValue ? (
-                          <Badge variant="success" className="text-[10px] uppercase tracking-wide">
-                            Value
-                          </Badge>
-                        ) : null}
-                        {item.explicit ? (
-                          <Badge variant="destructive" className="text-[10px] uppercase tracking-wide">
-                            Explicit
-                          </Badge>
-                        ) : null}
-                      </div>
+                      <Link
+                        href={detailHref}
+                        className="text-sm font-semibold text-foreground transition hover:text-primary"
+                      >
+                        {item.title}
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                    )}
+                    {item.medium ? (
+                      <Badge variant="outline" className="uppercase tracking-wide">
+                        {item.medium}
+                      </Badge>
+                    ) : null}
+                    {item.language ? (
+                      <Badge variant="secondary" className="uppercase tracking-wide">
+                        {item.language}
+                      </Badge>
+                    ) : null}
+                    {item.hasValue ? (
+                      <Badge variant="success" className="text-[10px] uppercase tracking-wide">
+                        Value
+                      </Badge>
+                    ) : null}
+                    {item.explicit ? (
+                      <Badge variant="destructive" className="text-[10px] uppercase tracking-wide">
+                        Explicit
+                      </Badge>
+                    ) : null}
+                    {typeof item.episodeCount === "number" ? (
+                      <span className="text-[11px] text-muted-foreground">
+                        共 {formatNumber(item.episodeCount)} 集
+                      </span>
+                    ) : null}
+                  </div>
                       {item.author ? (
                         <p className="text-xs text-muted-foreground">作者：{item.author}</p>
                       ) : null}
