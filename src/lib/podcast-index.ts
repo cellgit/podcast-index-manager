@@ -139,6 +139,10 @@ export type PodcastFeedDetail = {
   locked?: boolean | number;
   image_url_hash?: number | string;
   imageUrlHash?: number | string;
+  oldest_item_pubdate?: number;
+  oldest_item_publish_time?: number;
+  oldestItemPubdate?: number;
+  oldestItemPublishTime?: number;
   newest_item_pubdate?: number;
   newest_item_publish_time?: number;
   newestItemPubdate?: number;
@@ -261,6 +265,9 @@ export type EpisodeDetail = {
   status?: string;
   content_link?: string;
   contentLink?: string;
+  value_created_on?: number;
+  valueCreatedOn?: number;
+  feed?: { id?: number | string } | null;
 };
 
 type RequestInitAugmented = RequestInit & { skipAuth?: boolean };

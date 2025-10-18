@@ -13,10 +13,10 @@ datasource db {
 
 model Podcast {
   id                         Int       @id @default(autoincrement())
-  podcast_index_id           Int?      @unique(map: "podcasts_podcast_index_id_unique")
+  podcast_index_id           Int       @unique(map: "podcasts_podcast_index_id_unique")
   podcast_guid               String?   @unique(map: "podcasts_podcast_guid_unique")
   title                      String
-  url                        String?   @unique(map: "podcasts_url_unique")
+  url                        String    @unique(map: "podcasts_url_unique")
   original_url               String?
   link                       String?
   description                String?   @db.Text
@@ -48,6 +48,7 @@ model Podcast {
   parse_errors               Int?      @default(0)
   locked                     Boolean?  @default(false)
   image_url_hash             BigInt?
+  oldest_item_pubdate        DateTime?
   newest_item_pubdate        DateTime?
   popularity                 Int?
   trend_score                Int?
@@ -79,7 +80,7 @@ model Episode {
   id               Int       @id @default(autoincrement())
   podcast_id       Int
   podcast          Podcast   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
-  feed_id          Int?
+  feed_id          Int
   podcast_index_id BigInt?   @unique(map: "episodes_podcast_index_id_unique")
   guid             String?   @db.VarChar(512)
   title            String
@@ -115,6 +116,7 @@ model Episode {
   value_model_type String?
   value_model_method String?
   value_model_suggested String?
+  value_created_on DateTime?
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt
 

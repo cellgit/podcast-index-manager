@@ -157,7 +157,9 @@ type NormalizedEpisodePayload = {
   }[];
 };
 
-const normalizeFeedPayload = (feed: PodcastFeedDetail): NormalizedFeedPayload => {
+export const normalizeFeedPayload = (
+  feed: PodcastFeedDetail,
+): NormalizedFeedPayload => {
   const categories = feed.categories
     ? Object.entries(feed.categories).map(([categoryId, name]) => ({
         id: Number(categoryId),
@@ -224,6 +226,12 @@ const normalizeFeedPayload = (feed: PodcastFeedDetail): NormalizedFeedPayload =>
     parse_errors: coerceNumber(feed.parse_errors ?? feed.parseErrors) ?? null,
     locked: coerceBoolean(feed.locked) ?? null,
     image_url_hash: toOptionalBigInt(feed.image_url_hash ?? feed.imageUrlHash) ?? null,
+    oldest_item_pubdate: toUnixDate(
+      feed.oldest_item_pubdate ??
+        feed.oldest_item_publish_time ??
+        feed.oldestItemPubdate ??
+        feed.oldestItemPublishTime,
+    ) ?? null,
     newest_item_pubdate: toUnixDate(
       feed.newest_item_pubdate ??
         feed.newest_item_publish_time ??
@@ -251,13 +259,23 @@ const normalizeFeedPayload = (feed: PodcastFeedDetail): NormalizedFeedPayload =>
   };
 };
 
-const normalizeEpisodePayload = (item: EpisodeDetail): NormalizedEpisodePayload => {
+export const normalizeEpisodePayload = (
+  item: EpisodeDetail,
+): NormalizedEpisodePayload => {
   const remoteId = toOptionalBigInt(item.id);
   const guid = coerceString(item.guid) ?? `pi-${item.id}`;
   const value = item.value ?? null;
+  const feedIdCandidate =
+    coerceNumber(item.feed_id ?? item.feedId) ?? coerceNumber(item.feed?.id);
+
+  if (feedIdCandidate === null || feedIdCandidate === undefined) {
+    throw new Error(
+      `Episode payload缺少feedId，无法建立与Podcast的关联 (episode id: ${item.id})`,
+    );
+  }
 
   const data: Record<string, unknown> = {
-    feed_id: coerceNumber(item.feed_id ?? item.feedId) ?? null,
+    feed_id: feedIdCandidate,
     title: item.title,
     description: item.description ?? null,
     link: item.link ?? null,
@@ -287,16 +305,15 @@ const normalizeEpisodePayload = (item: EpisodeDetail): NormalizedEpisodePayload 
     transcript_url: item.transcript_url ?? item.transcriptUrl ?? null,
     chapters_url: item.chapters_url ?? item.chaptersUrl ?? null,
     content_link: item.content_link ?? item.contentLink ?? null,
-    start_time: toUnixDate(
-      extractNumeric((item as Record<string, unknown>).start_time ?? item.startTime),
-    ) ?? null,
-    end_time: toUnixDate(
-      extractNumeric((item as Record<string, unknown>).end_time ?? item.endTime),
-    ) ?? null,
+    start_time: toUnixDate(extractNumeric(item.start_time ?? item.startTime)) ?? null,
+    end_time: toUnixDate(extractNumeric(item.end_time ?? item.endTime)) ?? null,
     status: coerceString(item.status) ?? null,
     value_model_type: value?.model?.type ?? null,
     value_model_method: value?.model?.method ?? null,
     value_model_suggested: value?.model?.suggested ?? null,
+    value_created_on: toUnixDate(
+      extractNumeric(item.value_created_on ?? item.valueCreatedOn),
+    ) ?? null,
   };
 
   const transcripts = asArray(item.transcripts)
