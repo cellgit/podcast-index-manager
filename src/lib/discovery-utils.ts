@@ -45,6 +45,9 @@ export function normalizeFeed(feed: FeedLike): DiscoveryItem | null {
   const description = descriptionRaw
     ? truncateText(sanitizePlainText(descriptionRaw), 480)
     : undefined;
+  const descriptionHtml = descriptionRaw
+    ? sanitizeDescriptionHtml(descriptionRaw, 2_000)
+    : undefined;
 
   const image =
     (typeof (feed as { artwork?: string }).artwork === "string" &&
@@ -187,6 +190,7 @@ export function normalizeFeed(feed: FeedLike): DiscoveryItem | null {
     feedId,
     title,
     description,
+    descriptionHtml,
     url,
     link,
     image,
@@ -395,6 +399,84 @@ export function mapFeedsToDiscoveryItems(
     .map((feed) => normalizeFeed(feed))
     .filter((item): item is DiscoveryItem => item !== null);
   return prepareDiscoveryItems(normalized);
+}
+
+const ALLOWED_DESCRIPTION_TAGS = new Set([
+  "p",
+  "br",
+  "strong",
+  "em",
+  "b",
+  "i",
+  "u",
+  "ul",
+  "ol",
+  "li",
+  "a",
+  "blockquote",
+  "code",
+  "pre",
+]);
+
+function sanitizeDescriptionHtml(input: string, maxLength: number): string {
+  if (!input) {
+    return "";
+  }
+
+  let value = String(input);
+  value = value
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
+
+  value = value.replace(/<\/?([a-z0-9:-]+)([^>]*)>/gi, (match, tagName, rawAttrs) => {
+    const tag = tagName.toLowerCase();
+    if (!ALLOWED_DESCRIPTION_TAGS.has(tag)) {
+      return "";
+    }
+
+    if (match.startsWith("</")) {
+      return `</${tag}>`;
+    }
+
+    if (tag === "br") {
+      return "<br />";
+    }
+
+    if (tag === "a") {
+      const hrefMatch = rawAttrs.match(/href=(["'])(.*?)\1/i);
+      const rawHref = hrefMatch ? hrefMatch[2] : "";
+      const safeHref =
+        rawHref && /^https?:\/\//i.test(rawHref)
+          ? rawHref
+          : rawHref && rawHref.startsWith("#")
+            ? rawHref
+            : "";
+      const rel = 'rel="noreferrer noopener"';
+      const target = safeHref && !safeHref.startsWith("#") ? ' target="_blank"' : "";
+      const hrefAttr = safeHref ? ` href="${escapeHtmlAttribute(safeHref)}"` : "";
+      return `<a${hrefAttr}${target} ${rel}>`;
+    }
+
+    return `<${tag}>`;
+  });
+
+  value = value.replace(/\son[a-z]+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "");
+  value = value.replace(/\sstyle\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "");
+
+  if (maxLength > 0 && value.length > maxLength) {
+    value = `${value.slice(0, maxLength).trimEnd()}…`;
+  }
+
+  return value;
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function createRandomKey(): string {

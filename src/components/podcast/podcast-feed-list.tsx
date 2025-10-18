@@ -172,7 +172,7 @@ function PodcastFeedListItem({ item, onImportResult }: PodcastFeedListItemProps)
   );
 
   return (
-    <article className="group grid gap-4 rounded-lg border border-border/50 bg-muted/20 p-4 shadow-sm transition hover:border-primary/50 hover:bg-background/80 hover:shadow-md sm:grid-cols-[112px_minmax(0,1fr)_auto] sm:gap-5 sm:items-start">
+    <article className="group grid gap-5 rounded-lg border border-border/50 bg-muted/20 p-4 shadow-sm transition hover:border-primary/50 hover:bg-background/80 hover:shadow-md sm:grid-cols-[120px_minmax(0,1fr)_auto] sm:gap-6 sm:items-start">
       <div className="relative mx-auto h-24 w-24 overflow-hidden rounded-md border border-border/60 bg-muted shadow-sm sm:mx-0 sm:self-start">
         {item.image ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -188,7 +188,7 @@ function PodcastFeedListItem({ item, onImportResult }: PodcastFeedListItemProps)
         )}
       </div>
 
-      <div className="flex min-w-0 flex-col gap-2 sm:pt-1">
+      <div className="flex min-w-0 flex-col gap-2 pt-3 sm:pt-1">
         <div className="flex flex-wrap items-center gap-2">
           {detailHref ? (
             <Link
@@ -231,7 +231,12 @@ function PodcastFeedListItem({ item, onImportResult }: PodcastFeedListItemProps)
           <p className="text-xs text-muted-foreground">作者：{item.author}</p>
         ) : null}
 
-        {item.description ? (
+        {item.descriptionHtml ? (
+          <div
+            className="prose prose-xs max-w-none text-muted-foreground line-clamp-5 [&_*]:text-xs [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 [&>li]:my-0 [&>a]:text-primary hover:[&>a]:underline"
+            dangerouslySetInnerHTML={{ __html: item.descriptionHtml }}
+          />
+        ) : item.description ? (
           <p className="line-clamp-4 break-words text-xs leading-5 text-muted-foreground">
             {item.description}
           </p>

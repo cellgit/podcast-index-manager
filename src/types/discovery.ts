@@ -8,6 +8,7 @@ export type DiscoveryItem = {
   feedId?: number;
   title: string;
   description?: string;
+  descriptionHtml?: string;
   url?: string;
   link?: string;
   image?: string;
