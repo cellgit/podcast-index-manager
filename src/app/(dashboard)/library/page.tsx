@@ -1,11 +1,10 @@
 import { Prisma, SyncStatus } from "@prisma/client";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Filter, Wallet, RefreshCcw, Sparkles, FolderPlus } from "lucide-react";
+import { Filter, Wallet, RefreshCcw, FolderPlus } from "lucide-react";
 
 import { prisma } from "@/lib/prisma";
 import { PodcastImportPanel } from "@/components/podcast/podcast-import-panel";
-import { PodcastDiscovery } from "@/components/podcast/podcast-discovery";
 import { SyncPodcastButton } from "@/components/podcast/sync-podcast-button";
 import { CollectionQuickAction } from "@/components/podcast/collection-quick-action";
 import { CollectionCreateForm } from "@/components/podcast/collection-create-form";
@@ -410,23 +409,6 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
               </CardContent>
             </Card>
           </div>
-        </section>
-
-        <section>
-          <Card className="border-border/70">
-            <CardHeader className="space-y-1">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Sparkles className="h-4 w-4 text-primary" />
-                发现新内容
-              </CardTitle>
-              <CardDescription>
-                从 PodcastIndex 的榜单与最新数据中选择潜力订阅源，快速加入目录。
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <PodcastDiscovery />
-            </CardContent>
-          </Card>
         </section>
       </main>
     </>

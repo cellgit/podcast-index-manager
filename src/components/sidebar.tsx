@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, LayoutDashboard, Library, ListChecks, Mic2, Settings } from "lucide-react";
+import {
+  Activity,
+  LayoutDashboard,
+  Library,
+  ListChecks,
+  Mic2,
+  Settings,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -34,6 +42,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: Library,
     href: "/library",
     isActive: (pathname) => pathname.startsWith("/library") || pathname.startsWith("/podcast"),
+  },
+  {
+    id: "discover",
+    label: "发现新内容",
+    icon: Sparkles,
+    href: "/discover",
+    isActive: (pathname) => pathname.startsWith("/discover"),
   },
   {
     id: "tasks",
