@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { PodcastFeedList } from "@/components/podcast/podcast-feed-list";
 import type { DiscoveryItem } from "@/types/discovery";
 import type { DiscoveryImportResult } from "@/components/podcast/discovery-import-button";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
 type FacetEntry = {
   value: string;
@@ -93,8 +94,18 @@ const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
   { value: "title", label: "标题字母" },
 ];
 
-const PAGE_SIZE_OPTIONS = [20, 40, 60, 80, 100];
-const FETCH_LIMIT = 200;
+const PAGE_SIZE_OPTIONS = [20, 40, 60, 80];
+const FETCH_LIMIT = Number(process.env.NEXT_PUBLIC_PODCAST_INDEX_DISCOVER_LIMIT ?? 80);
+const PAGE_SIZE_CHOICES = (() => {
+  const filtered = PAGE_SIZE_OPTIONS.filter(
+    (value) => value > 0 && value <= FETCH_LIMIT,
+  );
+  if (filtered.length) {
+    return filtered;
+  }
+  const fallback = Math.max(1, Math.min(FETCH_LIMIT, DEFAULT_FILTERS.pageSize));
+  return [fallback];
+})();
 
 const EMPTY_FACETS: FacetGroup = {
   languages: [],
@@ -109,7 +120,14 @@ export function PodcastFilterExplorer({
 }) {
   const router = useRouter();
   const baselineFilters = useMemo(
-    () => ({ ...DEFAULT_FILTERS, ...(initialFilters ?? {}) }),
+    () => {
+      const merged = { ...DEFAULT_FILTERS, ...(initialFilters ?? {}) };
+      const validChoices = new Set(PAGE_SIZE_CHOICES);
+      if (!validChoices.has(merged.pageSize)) {
+        merged.pageSize = PAGE_SIZE_CHOICES[0];
+      }
+      return merged;
+    },
     [initialFilters],
   );
 
@@ -123,6 +141,7 @@ export function PodcastFilterExplorer({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [page, setPage] = useState(1);
+  const debouncedFilters = useDebouncedValue(filters, 450);
 
   useEffect(() => {
     let isCurrent = true;
@@ -132,34 +151,34 @@ export function PodcastFilterExplorer({
       setError(null);
       try {
         const params = new URLSearchParams();
-        params.set("source", filters.source);
-        params.set("sort", filters.sort);
+        params.set("source", debouncedFilters.source);
+        params.set("sort", debouncedFilters.sort);
         params.set("limit", String(FETCH_LIMIT));
-        if (filters.searchTerm) {
-          params.set("q", filters.searchTerm);
+        if (debouncedFilters.searchTerm) {
+          params.set("q", debouncedFilters.searchTerm);
         }
-        if (filters.language) {
-          params.append("language", filters.language);
+        if (debouncedFilters.language) {
+          params.append("language", debouncedFilters.language);
         }
-        if (filters.medium) {
-          params.set("medium", filters.medium);
+        if (debouncedFilters.medium) {
+          params.set("medium", debouncedFilters.medium);
         }
-        if (filters.category) {
-          params.append("category", filters.category);
+        if (debouncedFilters.category) {
+          params.append("category", debouncedFilters.category);
         }
-        if (filters.valueMode === "only") {
+        if (debouncedFilters.valueMode === "only") {
           params.set("valueOnly", "true");
-        } else if (filters.valueMode === "exclude") {
+        } else if (debouncedFilters.valueMode === "exclude") {
           params.set("valueOnly", "false");
         }
-        if (filters.explicit !== "include") {
-          params.set("explicit", filters.explicit);
+        if (debouncedFilters.explicit !== "include") {
+          params.set("explicit", debouncedFilters.explicit);
         }
-        if (filters.minEpisodes > 0) {
-          params.set("minEpisodes", String(filters.minEpisodes));
+        if (debouncedFilters.minEpisodes > 0) {
+          params.set("minEpisodes", String(debouncedFilters.minEpisodes));
         }
 
-    const response = await fetch(
+        const response = await fetch(
       `/api/podcast/discover/filter?${params.toString()}`,
       {
         cache: "no-store",
@@ -199,7 +218,7 @@ export function PodcastFilterExplorer({
         controller.abort();
       }
     };
-  }, [filters]);
+  }, [debouncedFilters]);
 
   useEffect(() => {
     setFilters((prev) =>
@@ -429,13 +448,17 @@ export function PodcastFilterExplorer({
                 <Select
                   value={String(filters.pageSize)}
                   onChange={(value) => {
+                    const nextSize = Math.max(
+                      1,
+                      Math.min(Number(value), FETCH_LIMIT),
+                    );
                     setFilters((prev) => {
-                      const next = { ...prev, pageSize: Number(value) };
+                      const next = { ...prev, pageSize: nextSize };
                       return next;
                     });
                     setPage(1);
                   }}
-                  options={PAGE_SIZE_OPTIONS.map((option) => ({
+                  options={PAGE_SIZE_CHOICES.map((option) => ({
                     value: String(option),
                     label: `${option} 条`,
                   }))}

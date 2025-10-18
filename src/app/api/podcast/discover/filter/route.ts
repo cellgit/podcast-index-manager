@@ -7,6 +7,39 @@ import { prisma } from "@/lib/prisma";
 import { mapFeedsToDiscoveryItems } from "@/lib/discovery-utils";
 import type { DiscoveryItem } from "@/types/discovery";
 
+const MAX_FETCH_LIMIT = Number(
+  process.env.PODCAST_INDEX_DISCOVER_LIMIT ?? 80,
+);
+const FILTER_CACHE_TTL_MS = Number(
+  process.env.PODCAST_INDEX_FILTER_CACHE_TTL_MS ?? 60_000,
+);
+const FILTER_CACHE_MAX_ENTRIES = Number(
+  process.env.PODCAST_INDEX_FILTER_CACHE_MAX ?? 100,
+);
+
+type FilterResponsePayload = {
+  items: DiscoveryItem[];
+  total: number;
+  facets: {
+    available: ReturnType<typeof buildFacets>;
+    filtered: ReturnType<typeof buildFacets>;
+  };
+  source: string;
+  applied: {
+    searchTerm?: string;
+    languages: string[];
+    medium?: string;
+    categories: string[];
+    valueOnly?: boolean;
+    explicit: ExplicitMode;
+    minEpisodes: number;
+    sort: string;
+  };
+};
+
+const responseCache = new Map<string, { expiresAt: number; payload: FilterResponsePayload }>();
+const inflightRequests = new Map<string, Promise<FilterResponsePayload>>();
+
 const querySchema = z.object({
   q: z
     .string()
@@ -85,7 +118,11 @@ export async function GET(request: Request) {
   const params = parsed.data;
 
   const searchTerm = params.q;
-  const limit = params.limit ?? 80;
+  const requestedLimit = params.limit ?? 80;
+  const limit = Math.max(
+    1,
+    Math.min(requestedLimit, MAX_FETCH_LIMIT),
+  );
   const mediumFilter = params.medium?.toLowerCase();
   let valueFilter = params.valueOnly ?? undefined;
   if (valueFilter === undefined) {
@@ -136,6 +173,9 @@ export async function GET(request: Request) {
     }
   }
 
+  const languageArray = [...languageSet].sort();
+  const categoryArray = [...categorySet].sort();
+
   const client = createPodcastIndexClient();
   const service = new PodcastService(client, prisma);
 
@@ -143,35 +183,67 @@ export async function GET(request: Request) {
     params.source ??
     (searchTerm ? "search" : mediumFilter ? "medium" : "recent");
 
-  const feeds = await resolveFeeds({
-    service,
-    client,
+  const cacheKey = buildCacheKey({
     source: resolvedSource,
-    searchTerm,
     limit,
-    medium: mediumFilter,
-    tag: params.tag,
-    language: languageSet.size === 1 ? [...languageSet][0] : undefined,
-  });
-
-  const normalized = mapFeedsToDiscoveryItems(feeds);
-  const availableFacets = buildFacets(normalized);
-
-  const filtered = applyFilters(normalized, {
-    searchTerm,
-    languages: languageSet,
-    medium: mediumFilter,
-    categories: categorySet,
+    searchTerm: searchTerm ?? "",
+    medium: mediumFilter ?? "",
+    tag: params.tag ?? "",
     valueOnly: valueFilter,
     explicit: explicitFilter,
     minEpisodes,
+    sort: sortKey,
+    languages: languageArray,
+    categories: categoryArray,
   });
 
-  const sorted = sortItems(filtered, sortKey);
-  const limited = sorted.slice(0, limit);
+  const cachedEntry = responseCache.get(cacheKey);
+  const now = Date.now();
+  if (cachedEntry && cachedEntry.expiresAt > now) {
+    return NextResponse.json(cachedEntry.payload, {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
 
-  return NextResponse.json(
-    {
+  const existingPromise = inflightRequests.get(cacheKey);
+  if (existingPromise) {
+    const payload = await existingPromise;
+    return NextResponse.json(payload, {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  const requestPromise = (async (): Promise<FilterResponsePayload> => {
+    const feeds = await resolveFeeds({
+      service,
+      client,
+      source: resolvedSource,
+      searchTerm,
+      limit,
+      medium: mediumFilter,
+      tag: params.tag,
+      language: languageArray.length === 1 ? languageArray[0] : undefined,
+    });
+
+    const normalized = mapFeedsToDiscoveryItems(feeds);
+    const availableFacets = buildFacets(normalized);
+
+    const filtered = applyFilters(normalized, {
+      searchTerm,
+      languages: new Set(languageArray),
+      medium: mediumFilter,
+      categories: new Set(categoryArray),
+      valueOnly: valueFilter,
+      explicit: explicitFilter,
+      minEpisodes,
+    });
+
+    const sorted = sortItems(filtered, sortKey);
+    const limited = sorted.slice(0, limit);
+
+    return {
       items: limited,
       total: filtered.length,
       facets: {
@@ -181,20 +253,33 @@ export async function GET(request: Request) {
       source: resolvedSource,
       applied: {
         searchTerm,
-        languages: [...languageSet],
+        languages: languageArray,
         medium: mediumFilter,
-        categories: [...categorySet],
+        categories: categoryArray,
         valueOnly: valueFilter,
         explicit: explicitFilter,
         minEpisodes,
         sort: sortKey,
       },
-    },
-    {
+    };
+  })();
+
+  inflightRequests.set(cacheKey, requestPromise);
+
+  try {
+    const payload = await requestPromise;
+    responseCache.set(cacheKey, {
+      payload,
+      expiresAt: now + FILTER_CACHE_TTL_MS,
+    });
+    trimCacheIfNeeded();
+    return NextResponse.json(payload, {
       status: 200,
       headers: { "Cache-Control": "no-store" },
-    },
-  );
+    });
+  } finally {
+    inflightRequests.delete(cacheKey);
+  }
 }
 
 async function resolveFeeds({
@@ -414,4 +499,37 @@ function mapFacet(source: Map<string, number>) {
       count,
     }))
     .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+}
+
+type CacheKeyInput = {
+  source: string;
+  limit: number;
+  searchTerm: string;
+  medium: string;
+  tag: string;
+  valueOnly?: boolean;
+  explicit: ExplicitMode;
+  minEpisodes: number;
+  sort: string;
+  languages: string[];
+  categories: string[];
+};
+
+function buildCacheKey(input: CacheKeyInput) {
+  return JSON.stringify(input);
+}
+
+function trimCacheIfNeeded() {
+  if (responseCache.size <= FILTER_CACHE_MAX_ENTRIES) {
+    return;
+  }
+  const excess = responseCache.size - FILTER_CACHE_MAX_ENTRIES;
+  const keys = responseCache.keys();
+  for (let i = 0; i < excess; i += 1) {
+    const key = keys.next();
+    if (key.done) {
+      break;
+    }
+    responseCache.delete(key.value);
+  }
 }

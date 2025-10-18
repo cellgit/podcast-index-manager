@@ -19,7 +19,7 @@ const TRENDING_CACHE_TTL_MS = Number(
   process.env.PODCAST_INDEX_TRENDING_CACHE_TTL_MS ?? 5 * 60 * 1000,
 );
 const MAX_EPISODE_COUNT_ENRICH = Number(
-  process.env.PODCAST_INDEX_EPISODE_ENRICH_LIMIT ?? 12,
+  process.env.PODCAST_INDEX_EPISODE_ENRICH_LIMIT ?? 3,
 );
 
 type TrendingCacheValue = {
