@@ -145,7 +145,6 @@ export function PodcastFilterExplorer({
 
   useEffect(() => {
     let isCurrent = true;
-    const controller = new AbortController();
     const load = async () => {
       setLoading(true);
       setError(null);
@@ -178,13 +177,9 @@ export function PodcastFilterExplorer({
           params.set("minEpisodes", String(debouncedFilters.minEpisodes));
         }
 
-        const response = await fetch(
-      `/api/podcast/discover/filter?${params.toString()}`,
-      {
-        cache: "no-store",
-        signal: controller.signal,
-      },
-    );
+        const response = await fetch(`/api/podcast/discover/filter?${params.toString()}`, {
+          cache: "no-store",
+        });
         if (!response.ok) {
           const text = await response.text();
           throw new Error(text || `请求失败（${response.status}）`);
@@ -201,7 +196,7 @@ export function PodcastFilterExplorer({
         if (!isCurrent) {
           return;
         }
-        if (err instanceof DOMException && err.name === "AbortError") {
+        if (isAbortError(err)) {
           return;
         }
         setError(err instanceof Error ? err.message : "加载筛选结果失败");
@@ -214,9 +209,6 @@ export function PodcastFilterExplorer({
     void load();
     return () => {
       isCurrent = false;
-      if (!controller.signal.aborted) {
-        controller.abort();
-      }
     };
   }, [debouncedFilters]);
 
@@ -517,6 +509,16 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </label>
   );
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    return error.name === "AbortError";
+  }
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function Select({
