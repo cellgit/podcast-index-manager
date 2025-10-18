@@ -12,7 +12,19 @@ import type {
   EpisodeTranscriptPayload,
   PodcastFeedDetail,
   PodcastIndexClient,
+  SearchPodcast,
 } from "@/lib/podcast-index";
+
+const TRENDING_CACHE_TTL_MS = Number(
+  process.env.PODCAST_INDEX_TRENDING_CACHE_TTL_MS ?? 5 * 60 * 1000,
+);
+
+type TrendingCacheValue = {
+  expiresAt: number;
+  data: SearchPodcast[];
+};
+
+const trendingCache = new Map<string, TrendingCacheValue>();
 
 type PodcastSyncResult = {
   podcast: Podcast;
@@ -666,8 +678,20 @@ export class PodcastService {
   }
 
   async discoverTrending(options: { max?: number; lang?: string; cat?: string } = {}) {
+    const cacheKey = buildTrendingCacheKey(options);
+    const cached = trendingCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const feeds = await this.client.trendingPodcasts(options);
-    return this.ensureEpisodeCounts(feeds);
+    const enriched = await this.ensureEpisodeCounts(feeds);
+    trendingCache.set(cacheKey, {
+      data: enriched,
+      expiresAt: now + TRENDING_CACHE_TTL_MS,
+    });
+    return enriched;
   }
 
   async discoverRecentFeeds(options: { max?: number; since?: number; lang?: string } = {}) {
@@ -1135,6 +1159,15 @@ export class PodcastService {
       });
     }
   }
+}
+
+function buildTrendingCacheKey(options: { max?: number; lang?: string; cat?: string }) {
+  return [
+    "trending",
+    options.max ?? "default",
+    options.lang ?? "all",
+    options.cat ?? "all",
+  ].join(":");
 }
 
 type EpisodeCountSource = {

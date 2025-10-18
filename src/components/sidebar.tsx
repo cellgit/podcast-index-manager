@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  Filter,
   LayoutDashboard,
   Library,
   ListChecks,
@@ -48,7 +49,15 @@ const NAV_ITEMS: NavItem[] = [
     label: "发现新内容",
     icon: Sparkles,
     href: "/discover",
-    isActive: (pathname) => pathname.startsWith("/discover"),
+    isActive: (pathname) =>
+      pathname === "/discover" || pathname === "/discover/",
+  },
+  {
+    id: "discover-filter",
+    label: "新内容筛选",
+    icon: Filter,
+    href: "/discover/filter",
+    isActive: (pathname) => pathname.startsWith("/discover/filter"),
   },
   {
     id: "tasks",

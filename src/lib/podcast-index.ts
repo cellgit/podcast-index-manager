@@ -31,6 +31,15 @@ if (!/(^|,)\s*api\.podcastindex\.org\s*(,|$)/i.test(noProxy)) {
 import { createHash } from "node:crypto";
 // https://api.podcastindex.org/api/1.0/search/byterm?q=batman+university&pretty
 const API_BASE = "https://api.podcastindex.org/api/1.0" as const;
+const RATE_LIMIT_INTERVAL_MS = Number(
+  process.env.PODCAST_INDEX_MIN_INTERVAL_MS ?? 1_200,
+);
+const MAX_RETRIES = Number(process.env.PODCAST_INDEX_MAX_RETRIES ?? 3);
+const RETRY_BASE_DELAY_MS = Number(
+  process.env.PODCAST_INDEX_RETRY_BASE_MS ?? 1_500,
+);
+
+const rateLimiter = createRateLimiter(RATE_LIMIT_INTERVAL_MS);
 
 export class PodcastIndexRequestError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -396,30 +405,57 @@ export class PodcastIndexClient {
 
     headers.set("Content-Type", "application/json");
 
-    let response: Response;
-    try {
-      console.log(`Fetching========== ${url}`);
-      response = await fetch(url, {
-        ...init,
-        headers,
-        cache: "no-store",
-      });
-    } catch (error) {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+      await rateLimiter();
+
+      let response: Response;
+      try {
+        console.log(`Fetching========== ${url}`);
+        response = await fetch(url, {
+          ...init,
+          headers,
+          cache: "no-store",
+        });
+      } catch (error) {
+        if (attempt < MAX_RETRIES) {
+          await sleep(RETRY_BASE_DELAY_MS * (attempt + 1));
+          continue;
+        }
+        throw new PodcastIndexRequestError(
+          "无法连接 PodcastIndex API，请检查网络连接和访问凭据。",
+          { cause: error },
+        );
+      }
+
+      if (response.ok) {
+        return (await response.json()) as T;
+      }
+
+      const errorBody = await response.text();
+      const status = response.status;
+
+      if (status === 429 && attempt < MAX_RETRIES) {
+        const retryAfterMs =
+          parseRetryAfter(response.headers.get("retry-after")) ??
+          RETRY_BASE_DELAY_MS * (attempt + 1);
+        await sleep(retryAfterMs);
+        continue;
+      }
+
+      if (status >= 500 && status < 600 && attempt < MAX_RETRIES) {
+        await sleep(RETRY_BASE_DELAY_MS * (attempt + 1));
+        continue;
+      }
+
       throw new PodcastIndexRequestError(
-        "无法连接 PodcastIndex API，请检查网络连接和访问凭据。",
-        { cause: error },
+        `PodcastIndex 请求失败（${status} ${response.statusText}）`,
+        { cause: errorBody },
       );
     }
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new PodcastIndexRequestError(
-        `PodcastIndex 请求失败（${response.status} ${response.statusText}）`,
-        { cause: text },
-      );
-    }
-
-    return (await response.json()) as T;
+    throw new PodcastIndexRequestError(
+      "多次尝试调用 PodcastIndex API 仍然失败，请稍后重试。",
+    );
   }
 
   async searchPodcasts(term: string, max = 25): Promise<SearchPodcast[]> {
@@ -603,4 +639,51 @@ export function getAuthHeadersForTesting(
   credentials?: PodcastIndexCredentials,
 ) {
   return buildAuthHeaders(credentials ?? resolveCredentials());
+}
+
+function createRateLimiter(minInterval: number) {
+  if (minInterval <= 0) {
+    return async () => undefined;
+  }
+
+  let lastInvocation = 0;
+  let pending = Promise.resolve();
+
+  return () => {
+    const run = async () => {
+      const now = Date.now();
+      const wait = Math.max(lastInvocation + minInterval - now, 0);
+      if (wait > 0) {
+        await sleep(wait);
+      }
+      lastInvocation = Date.now();
+    };
+
+    pending = pending.then(run, run);
+    return pending;
+  };
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function parseRetryAfter(header: string | null): number | null {
+  if (!header) {
+    return null;
+  }
+
+  const numeric = Number(header);
+  if (Number.isFinite(numeric)) {
+    return numeric * 1_000;
+  }
+
+  const date = Number(new Date(header));
+  if (Number.isFinite(date)) {
+    return Math.max(date - Date.now(), 0);
+  }
+
+  return null;
 }
