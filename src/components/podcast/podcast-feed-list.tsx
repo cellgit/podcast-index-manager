@@ -233,7 +233,7 @@ function PodcastFeedListItem({ item, onImportResult }: PodcastFeedListItemProps)
 
         {item.descriptionHtml ? (
           <div
-            className="prose prose-xs max-w-none text-muted-foreground line-clamp-5 [&_*]:text-xs [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 [&>li]:my-0 [&>a]:text-primary hover:[&>a]:underline"
+            className="space-y-1 text-xs leading-5 text-muted-foreground [&>ol]:list-decimal [&>ol]:pl-4 [&>p]:m-0 [&>ul]:list-disc [&>ul]:pl-4 [&>a]:text-primary hover:[&>a]:underline"
             dangerouslySetInnerHTML={{ __html: item.descriptionHtml }}
           />
         ) : item.description ? (

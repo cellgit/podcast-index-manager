@@ -8,7 +8,12 @@ import {
   Rss,
 } from "lucide-react";
 
-import { createPodcastIndexClient } from "@/lib/podcast-index";
+import { createPodcastIndexClient, PodcastIndexRequestError } from "@/lib/podcast-index";
+import {
+  sanitizeDescriptionHtml,
+  sanitizePlainText,
+  formatNumber,
+} from "@/lib/discovery-utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,6 +25,14 @@ import {
 } from "@/components/ui/card";
 import { DiscoveryImportButton } from "@/components/podcast/discovery-import-button";
 import { MiniAudioPlayer } from "@/components/podcast/mini-audio-player";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type Props = {
   params: Promise<{ identity: string }>;
@@ -32,13 +45,54 @@ export default async function DiscoverPodcastDetailPage({ params }: Props) {
 
   const client = createPodcastIndexClient();
 
-  const feed = await fetchFeedByIdentity(client, type, value);
+  let feed: Awaited<ReturnType<typeof fetchFeedByIdentity>> | null = null;
+  let episodes: Awaited<ReturnType<typeof fetchEpisodes>> = [];
+  let errorMessage: string | null = null;
+
+  try {
+    feed = await fetchFeedByIdentity(client, type, value);
+    if (!feed) {
+      errorMessage = "暂时无法从 PodcastIndex 获取该播客详情。";
+    }
+  } catch (error) {
+    console.error("discover detail: fetch feed failed", error);
+    errorMessage =
+      error instanceof PodcastIndexRequestError
+        ? error.message
+        : "加载播客详情失败，请稍后再试。";
+  }
+
   if (!feed) {
-    notFound();
+    return (
+      <>
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-border/60 bg-background/90 px-4 backdrop-blur sm:px-6">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/discover">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              返回发现列表
+            </Link>
+          </Button>
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">播客详情</p>
+            <h1 className="text-xl font-semibold text-foreground sm:text-2xl">信息暂不可用</h1>
+          </div>
+        </header>
+        <main className="flex-1 px-4 pb-10 pt-6 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-4xl rounded-lg border border-border/60 bg-muted/30 p-6 text-sm text-muted-foreground">
+            {errorMessage ?? "暂时无法获取该播客的详细数据，请稍后再试。"}
+          </div>
+        </main>
+      </>
+    );
   }
 
   const feedId = typeof feed.id === "number" ? feed.id : pickNumeric(feed.id) ?? null;
-  const episodes = await fetchEpisodes(client, feedId, feed.url);
+
+  try {
+    episodes = await fetchEpisodes(client, feedId, feed.url);
+  } catch (error) {
+    console.warn("discover detail: fetch episodes failed", error);
+  }
 
   const categories = feed.categories
     ? Object.values(feed.categories).filter((entry): entry is string => typeof entry === "string")
@@ -69,21 +123,22 @@ export default async function DiscoverPodcastDetailPage({ params }: Props) {
   const rssUrl = feed.url ?? feed.original_url ?? feed.originalUrl ?? null;
   const funding = feed.funding && (feed.funding.url || feed.funding.message) ? feed.funding : null;
   const valueDestinations = Array.isArray(feed.value?.destinations) ? feed.value?.destinations : [];
+  const descriptionHtml = feed.description
+    ? sanitizeDescriptionHtml(feed.description, 4_000)
+    : null;
 
   return (
     <>
-      <header className="sticky top-0 z-20 border-b border-border/60 bg-background/90 px-4 backdrop-blur sm:px-6">
-        <div className="mx-auto flex h-16 w-full max-w-5xl items-center gap-3">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/discover">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              返回发现列表
-            </Link>
-          </Button>
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">播客详情</p>
-            <h1 className="text-xl font-semibold text-foreground sm:text-2xl">{feed.title}</h1>
-          </div>
+      <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-border/60 bg-background/90 px-4 backdrop-blur sm:px-6">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/discover">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            返回发现列表
+          </Link>
+        </Button>
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">播客详情</p>
+          <h1 className="text-xl font-semibold text-foreground sm:text-2xl">{feed.title}</h1>
         </div>
       </header>
 
@@ -225,10 +280,11 @@ export default async function DiscoverPodcastDetailPage({ params }: Props) {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {feed.description ? (
-                  <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
-                    {sanitizePlainText(feed.description)}
-                  </p>
+                {descriptionHtml ? (
+                  <div
+                    className="prose prose-sm max-w-none text-muted-foreground [&>p]:my-2 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5"
+                    dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+                  />
                 ) : (
                   <p className="text-sm text-muted-foreground">暂无简介</p>
                 )}
@@ -237,29 +293,29 @@ export default async function DiscoverPodcastDetailPage({ params }: Props) {
 
             <Card>
               <CardHeader>
-                <CardTitle>最近节目</CardTitle>
+                <CardTitle>节目列表</CardTitle>
                 <CardDescription>
                   {episodes.length ? `展示最近 ${episodes.length} 集节目` : "暂无节目信息"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs uppercase text-muted-foreground">
-                      <th className="py-2">标题</th>
-                      <th className="py-2">发布时间</th>
-                      <th className="py-2">试听</th>
-                      <th className="py-2">时长</th>
-                      <th className="py-2">媒体类型</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>标题</TableHead>
+                      <TableHead>发布时间</TableHead>
+                      <TableHead>试听</TableHead>
+                      <TableHead>时长</TableHead>
+                      <TableHead>媒体类型</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {episodes.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
                           暂无节目，稍后再试。
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ) : (
                       episodes.map((episode) => {
                         const published = formatTimestamp(
@@ -267,38 +323,41 @@ export default async function DiscoverPodcastDetailPage({ params }: Props) {
                         );
                         const audioUrl = episode.enclosure_url ?? episode.enclosureUrl ?? undefined;
                         const audioType = episode.enclosure_type ?? episode.enclosureType ?? undefined;
+                        const episodeDescription = episode.description
+                          ? sanitizePlainText(episode.description)
+                          : "";
                         return (
-                          <tr key={episode.id} className="align-top text-sm">
-                            <td className="max-w-md py-3 pr-4">
+                          <TableRow key={episode.id} className="align-top">
+                            <TableCell className="max-w-md">
                               <div className="flex flex-col gap-1">
-                                <span className="font-medium text-foreground">{episode.title}</span>
-                                {episode.description ? (
+                                <span className="text-sm font-medium text-foreground">{episode.title}</span>
+                                {episodeDescription ? (
                                   <span className="line-clamp-3 text-xs text-muted-foreground">
-                                    {sanitizePlainText(episode.description)}
+                                    {episodeDescription}
                                   </span>
                                 ) : null}
                               </div>
-                            </td>
-                            <td className="py-3 text-xs text-muted-foreground">{published ?? "—"}</td>
-                            <td className="w-[240px] py-3">
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{published ?? "—"}</TableCell>
+                            <TableCell className="w-[240px]">
                               {audioUrl ? (
                                 <MiniAudioPlayer src={audioUrl} type={audioType} title={episode.title} />
                               ) : (
                                 <span className="text-xs text-muted-foreground">无音频文件</span>
                               )}
-                            </td>
-                            <td className="py-3 text-xs text-muted-foreground">
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
                               {formatDuration(pickNumeric(episode.duration))}
-                            </td>
-                            <td className="py-3 text-xs text-muted-foreground">
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
                               {audioType ?? "—"}
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                         );
                       })
                     )}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </section>
@@ -416,20 +475,6 @@ function formatTimestamp(timestamp?: number | null): string | null {
     minute: "numeric",
     hour12: false,
   }).format(date);
-}
-
-function sanitizePlainText(value?: string | null): string {
-  if (!value) {
-    return "";
-  }
-  return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function formatNumber(value?: number | null): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "—";
-  }
-  return new Intl.NumberFormat("zh-CN").format(value);
 }
 
 function formatDuration(value?: number | null): string {

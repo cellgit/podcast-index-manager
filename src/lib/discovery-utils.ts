@@ -235,21 +235,7 @@ export function getDetailHref(item: DiscoveryItem): string | null {
   if (!item.detailIdentity) {
     return null;
   }
-  if (item.detailIdentity.startsWith("feed:") && item.feedId) {
-    return `/podcast/${item.feedId}`;
-  }
-  if (item.detailIdentity.startsWith("guid:")) {
-    return `/podcast/guid/${item.detailIdentity.split(":")[1] ?? ""}`;
-  }
-  if (item.detailIdentity.startsWith("itunes:")) {
-    return `/podcast/itunes/${item.detailIdentity.split(":")[1] ?? ""}`;
-  }
-  if (item.detailIdentity.startsWith("url:")) {
-    return `/podcast/feed?url=${decodeURIComponent(
-      item.detailIdentity.slice("url:".length),
-    )}`;
-  }
-  return null;
+  return `/discover/podcast/${encodeURIComponent(item.detailIdentity)}`;
 }
 
 export function formatTimestamp(timestamp?: number | null): string | null {
@@ -278,6 +264,23 @@ export function formatNumber(value?: number | null): string {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
+const ALLOWED_DESCRIPTION_TAGS = new Set([
+  "p",
+  "br",
+  "strong",
+  "em",
+  "b",
+  "i",
+  "u",
+  "ul",
+  "ol",
+  "li",
+  "a",
+  "blockquote",
+  "code",
+  "pre",
+]);
+
 export function sanitizePlainText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -287,6 +290,67 @@ export function truncateText(text: string, maxLength: number): string {
     return text;
   }
   return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+export function sanitizeDescriptionHtml(input: string, maxLength: number): string {
+  if (!input) {
+    return "";
+  }
+
+  let value = String(input);
+  value = value
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
+
+  value = value.replace(/<\/?([a-z0-9:-]+)([^>]*)>/gi, (match, tagName, rawAttrs) => {
+    const tag = tagName.toLowerCase();
+    if (!ALLOWED_DESCRIPTION_TAGS.has(tag)) {
+      return "";
+    }
+
+    if (match.startsWith("</")) {
+      return `</${tag}>`;
+    }
+
+    if (tag === "br") {
+      return "<br />";
+    }
+
+    if (tag === "a") {
+      const hrefMatch = rawAttrs.match(/href=(["'])(.*?)\1/i);
+      const rawHref = hrefMatch ? hrefMatch[2] : "";
+      const safeHref =
+        rawHref && /^https?:\/\//i.test(rawHref)
+          ? rawHref
+          : rawHref && rawHref.startsWith("#")
+            ? rawHref
+            : "";
+      const rel = 'rel="noreferrer noopener"';
+      const target = safeHref && !safeHref.startsWith("#") ? ' target="_blank"' : "";
+      const hrefAttr = safeHref ? ` href="${escapeHtmlAttribute(safeHref)}"` : "";
+      return `<a${hrefAttr}${target} ${rel}>`;
+    }
+
+    return `<${tag}>`;
+  });
+
+  value = value.replace(/\son[a-z]+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "");
+  value = value.replace(/\sstyle\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "");
+
+  if (maxLength > 0 && value.length > maxLength) {
+    value = `${value.slice(0, maxLength).trimEnd()}…`;
+  }
+
+  return value;
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function pickPreferredItem(current: DiscoveryItem, candidate: DiscoveryItem): DiscoveryItem {
@@ -399,84 +463,6 @@ export function mapFeedsToDiscoveryItems(
     .map((feed) => normalizeFeed(feed))
     .filter((item): item is DiscoveryItem => item !== null);
   return prepareDiscoveryItems(normalized);
-}
-
-const ALLOWED_DESCRIPTION_TAGS = new Set([
-  "p",
-  "br",
-  "strong",
-  "em",
-  "b",
-  "i",
-  "u",
-  "ul",
-  "ol",
-  "li",
-  "a",
-  "blockquote",
-  "code",
-  "pre",
-]);
-
-function sanitizeDescriptionHtml(input: string, maxLength: number): string {
-  if (!input) {
-    return "";
-  }
-
-  let value = String(input);
-  value = value
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
-    .replace(/<!--[\s\S]*?-->/g, "");
-
-  value = value.replace(/<\/?([a-z0-9:-]+)([^>]*)>/gi, (match, tagName, rawAttrs) => {
-    const tag = tagName.toLowerCase();
-    if (!ALLOWED_DESCRIPTION_TAGS.has(tag)) {
-      return "";
-    }
-
-    if (match.startsWith("</")) {
-      return `</${tag}>`;
-    }
-
-    if (tag === "br") {
-      return "<br />";
-    }
-
-    if (tag === "a") {
-      const hrefMatch = rawAttrs.match(/href=(["'])(.*?)\1/i);
-      const rawHref = hrefMatch ? hrefMatch[2] : "";
-      const safeHref =
-        rawHref && /^https?:\/\//i.test(rawHref)
-          ? rawHref
-          : rawHref && rawHref.startsWith("#")
-            ? rawHref
-            : "";
-      const rel = 'rel="noreferrer noopener"';
-      const target = safeHref && !safeHref.startsWith("#") ? ' target="_blank"' : "";
-      const hrefAttr = safeHref ? ` href="${escapeHtmlAttribute(safeHref)}"` : "";
-      return `<a${hrefAttr}${target} ${rel}>`;
-    }
-
-    return `<${tag}>`;
-  });
-
-  value = value.replace(/\son[a-z]+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "");
-  value = value.replace(/\sstyle\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "");
-
-  if (maxLength > 0 && value.length > maxLength) {
-    value = `${value.slice(0, maxLength).trimEnd()}…`;
-  }
-
-  return value;
-}
-
-function escapeHtmlAttribute(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }
 
 function createRandomKey(): string {
