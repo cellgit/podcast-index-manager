@@ -18,6 +18,9 @@ import type {
 const TRENDING_CACHE_TTL_MS = Number(
   process.env.PODCAST_INDEX_TRENDING_CACHE_TTL_MS ?? 5 * 60 * 1000,
 );
+const MAX_EPISODE_COUNT_ENRICH = Number(
+  process.env.PODCAST_INDEX_EPISODE_ENRICH_LIMIT ?? 12,
+);
 
 type TrendingCacheValue = {
   expiresAt: number;
@@ -865,7 +868,16 @@ export class PodcastService {
       return feeds.map((feed) => this.applyEpisodeCount(feed, this.extractEpisodeCount(feed)));
     }
 
-    const details = await chunkedAll(missing, 5, async (feed) => {
+    const limitedMissing =
+      MAX_EPISODE_COUNT_ENRICH > 0
+        ? missing.slice(0, MAX_EPISODE_COUNT_ENRICH)
+        : missing;
+
+    if (!limitedMissing.length) {
+      return feeds.map((feed) => this.applyEpisodeCount(feed, this.extractEpisodeCount(feed)));
+    }
+
+    const details = await chunkedAll(limitedMissing, 5, async (feed) => {
       try {
         const detail = await this.fetchFeedDetail(feed);
         return { feed, detail };

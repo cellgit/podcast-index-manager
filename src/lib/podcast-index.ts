@@ -38,6 +38,9 @@ const MAX_RETRIES = Number(process.env.PODCAST_INDEX_MAX_RETRIES ?? 3);
 const RETRY_BASE_DELAY_MS = Number(
   process.env.PODCAST_INDEX_RETRY_BASE_MS ?? 1_500,
 );
+const MAX_RETRY_WAIT_MS = Number(
+  process.env.PODCAST_INDEX_MAX_RETRY_WAIT_MS ?? 10_000,
+);
 
 const rateLimiter = createRateLimiter(RATE_LIMIT_INTERVAL_MS);
 
@@ -438,7 +441,13 @@ export class PodcastIndexClient {
         const retryAfterMs =
           parseRetryAfter(response.headers.get("retry-after")) ??
           RETRY_BASE_DELAY_MS * (attempt + 1);
-        await sleep(retryAfterMs);
+        const delay = Math.min(
+          Math.max(retryAfterMs, RETRY_BASE_DELAY_MS),
+          MAX_RETRY_WAIT_MS,
+        );
+        if (delay > 0) {
+          await sleep(delay);
+        }
         continue;
       }
 
