@@ -16,7 +16,7 @@ export function createRedisConnection() {
 
 export type QueueBundle = {
   queue: Queue;
-  events: QueueEvents;
+  events?: QueueEvents;
   worker?: Worker;
 };
 

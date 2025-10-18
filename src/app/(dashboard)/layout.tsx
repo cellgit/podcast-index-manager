@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { SyncStatus } from "@prisma/client";
+import { Prisma, SyncStatus } from "@prisma/client";
 
 import { Sidebar } from "@/components/sidebar";
 import { prisma } from "@/lib/prisma";
@@ -28,7 +28,13 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
       where: { status: SyncStatus.PENDING },
     });
   } catch (error) {
-    console.error("无法连接数据库，pendingSyncs 统计失败", error);
+    console.error("无法连接数据库或执行查询失败", error);
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2021"
+    ) {
+      return <DatabaseConfigurationNotice migrationRequired />;
+    }
     return <DatabaseConfigurationNotice connectionError />;
   }
 
@@ -40,22 +46,51 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
   );
 }
 
-function DatabaseConfigurationNotice({ connectionError = false }: { connectionError?: boolean }) {
+function DatabaseConfigurationNotice({
+  connectionError = false,
+  migrationRequired = false,
+}: {
+  connectionError?: boolean;
+  migrationRequired?: boolean;
+}) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/20 px-4">
       <Card className="w-full max-w-lg border-dashed border-primary/40">
         <CardHeader>
           <CardTitle className="text-2xl font-semibold">
-            {connectionError ? "数据库连接异常" : "需要配置数据库"}
+            {migrationRequired
+              ? "需要初始化数据库"
+              : connectionError
+                ? "数据库连接异常"
+                : "需要配置数据库"}
           </CardTitle>
           <CardDescription>
-            {connectionError
-              ? "无法连接到 PostgreSQL，请确认本地数据库服务已启动，或更新连接字符串。"
-              : "在控制中心加载目录数据前，请先提供 PostgreSQL 连接字符串。"}
+            {migrationRequired
+              ? "数据库已连接，但缺少必要的数据表，请运行迁移或同步最新 schema。"
+              : connectionError
+                ? "无法连接到 PostgreSQL，请确认本地数据库服务已启动，或更新连接字符串。"
+                : "在控制中心加载目录数据前，请先提供 PostgreSQL 连接字符串。"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
-          {connectionError ? (
+          {migrationRequired ? (
+            <>
+              <p>
+                执行
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">npm run prisma:migrate</code>
+                或
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">npx prisma migrate deploy</code>
+                创建
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">sync_logs</code>
+                等基础表。开发环境也可以临时使用
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">npx prisma db push</code>
+                同步 schema。
+              </p>
+              <p>
+                迁移完成后重新启动应用，队列和仪表盘数据即可正常加载。
+              </p>
+            </>
+          ) : connectionError ? (
             <>
               <p>
                 无法连接到配置中的 PostgreSQL，请确认本地数据库服务或 docker-compose 容器已经启动并监听

@@ -1,4 +1,4 @@
-import { Queue, QueueEvents } from "bullmq";
+import { Queue } from "bullmq";
 
 import { logger } from "@/lib/logger";
 
@@ -16,27 +16,12 @@ export function getQueueBundle(): QueueBundle | null {
   try {
     const connection = createRedisConnection();
     const queue = new Queue(QUEUE_NAME, { connection });
-    const events = new QueueEvents(QUEUE_NAME, { connection });
-    const bundle: QueueBundle = { queue, events };
+    const bundle: QueueBundle = { queue };
     globalRef.__podcastQueue = bundle;
     logger.info(
       { queueName: QUEUE_NAME },
       "queue bundle initialized with Redis connection",
     );
-
-    events.on("failed", ({ jobId, failedReason }) => {
-      logger.error(
-        { queueName: QUEUE_NAME, jobId, failedReason },
-        "queue job failed",
-      );
-    });
-
-    events.on("completed", ({ jobId }) => {
-      logger.debug(
-        { queueName: QUEUE_NAME, jobId },
-        "queue job completed",
-      );
-    });
     return bundle;
   } catch (error) {
     logger.error(
