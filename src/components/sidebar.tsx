@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Library,
@@ -17,39 +18,51 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const NAV_ITEMS = [
-  { id: "overview", label: "总览", icon: LayoutDashboard },
-  { id: "library", label: "内容库", icon: Library },
-  { id: "tasks", label: "拉取任务", icon: ListChecks },
-  { id: "settings", label: "系统设置", icon: Settings },
-] as const;
+type NavItem = {
+  id: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  href: string;
+  isActive: (pathname: string) => boolean;
+};
 
-type NavItemId = (typeof NAV_ITEMS)[number]["id"];
+const NAV_ITEMS: NavItem[] = [
+  {
+    id: "overview",
+    label: "总览",
+    icon: LayoutDashboard,
+    href: "/overview",
+    isActive: (pathname) => pathname === "/overview",
+  },
+  {
+    id: "library",
+    label: "内容库",
+    icon: Library,
+    href: "/library",
+    isActive: (pathname) => pathname.startsWith("/library") || pathname.startsWith("/podcast"),
+  },
+  {
+    id: "tasks",
+    label: "拉取任务",
+    icon: ListChecks,
+    href: "/tasks",
+    isActive: (pathname) => pathname.startsWith("/tasks"),
+  },
+  {
+    id: "settings",
+    label: "系统设置",
+    icon: Settings,
+    href: "/settings",
+    isActive: (pathname) => pathname.startsWith("/settings"),
+  },
+];
 
 interface SidebarProps {
   pendingSyncs: number;
 }
 
 export function Sidebar({ pendingSyncs }: SidebarProps) {
-  const [activeTab, setActiveTab] = useState<NavItemId>("overview");
-
-  const handleNavClick = (itemId: NavItemId) => {
-    setActiveTab(itemId);
-    
-    // 这里添加实际的导航逻辑
-    // 目前只是模拟点击响应
-    console.log(`导航到: ${itemId}`);
-    
-    // 你可以在这里添加更多功能,比如:
-    // - 滚动到对应的内容区域
-    // - 切换显示不同的内容
-    // - 使用路由导航到不同页面等
-    
-    // 显示提示信息
-    if (itemId !== "overview") {
-      alert(`"${NAV_ITEMS.find(item => item.id === itemId)?.label}" 功能正在开发中...`);
-    }
-  };
+  const pathname = usePathname();
 
   return (
     <aside className="hidden w-72 flex-col border-r border-border/60 bg-background/80 backdrop-blur lg:flex">
@@ -64,19 +77,18 @@ export function Sidebar({ pendingSyncs }: SidebarProps) {
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-3 py-4">
         {NAV_ITEMS.map((item) => (
-          <button
+          <Link
             key={item.id}
-            type="button"
-            onClick={() => handleNavClick(item.id)}
+            href={item.href}
             className={
-              activeTab === item.id
+              item.isActive(pathname)
                 ? "flex items-center gap-3 rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm font-medium shadow transition-all hover:bg-primary/90"
                 : "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
             }
           >
             <item.icon className="h-4 w-4" />
             <span>{item.label}</span>
-          </button>
+          </Link>
         ))}
       </nav>
       <div className="border-t border-border/60 p-4">
@@ -92,9 +104,9 @@ export function Sidebar({ pendingSyncs }: SidebarProps) {
               variant="outline" 
               size="sm" 
               className="w-full justify-center"
-              onClick={() => alert("Worker 状态查看功能正在开发中...")}
+              asChild
             >
-              查看 Worker 状态
+              <Link href="/tasks#workers">查看 Worker 状态</Link>
             </Button>
           </CardFooter>
         </Card>

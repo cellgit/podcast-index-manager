@@ -5,9 +5,18 @@ import { PodcastService } from "@/services/podcast-service";
 import { prisma } from "@/lib/prisma";
 import { SyncStatus } from "@prisma/client";
 
-const bodySchema = z.object({
-  feedId: z.number().int().positive(),
-});
+const bodySchema = z
+  .object({
+    feedId: z.number().int().positive().optional(),
+    feedUrl: z.string().url().optional(),
+    guid: z.string().min(6).optional(),
+    itunesId: z.number().int().positive().optional(),
+    syncEpisodes: z.boolean().optional(),
+  })
+  .refine(
+    (value) => value.feedId || value.feedUrl || value.guid || value.itunesId,
+    { message: "请至少提供 feedId、feedUrl、guid 或 itunesId 之一" },
+  );
 
 export async function POST(request: Request) {
   if (!prisma) {
@@ -29,18 +38,33 @@ export async function POST(request: Request) {
 
   const client = createPodcastIndexClient();
   const service = new PodcastService(client, prisma);
-  const { feedId } = parsed.data;
+  const { feedId, feedUrl, guid, itunesId, syncEpisodes } = parsed.data;
+  const syncLabel =
+    feedId !== undefined
+      ? `feedId ${feedId}`
+      : feedUrl
+        ? `feedUrl ${feedUrl}`
+        : guid
+          ? `guid ${guid}`
+          : `itunesId ${itunesId}`;
 
   const log = await prisma.syncLog.create({
     data: {
       job_type: "REGISTER_FEED",
       status: SyncStatus.RUNNING,
-      message: `Registering feed ${feedId}`,
+      message: `Registering feed ${syncLabel}`,
     },
   });
 
   try {
-    const result = await service.syncPodcastByFeedId(feedId);
+    const result = await service.syncPodcastUsingIdentifiers(
+      { feedId, feedUrl, guid, itunesId },
+      {
+        synchronizeEpisodes: syncEpisodes,
+        fullEpisodeRefresh: syncEpisodes !== false,
+        episodeBatchSize: syncEpisodes === false ? undefined : 1000,
+      },
+    );
     if (!result) {
       await prisma.syncLog.update({
         where: { id: log.id },

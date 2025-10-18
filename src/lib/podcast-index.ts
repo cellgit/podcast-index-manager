@@ -270,6 +270,47 @@ export type EpisodeDetail = {
   feed?: { id?: number | string } | null;
 };
 
+export type RecentDataFeed = {
+  feedId: number;
+  feedUrl: string;
+  feedTitle: string;
+  feedDescription?: string;
+  feedImage?: string;
+  feedLanguage?: string;
+  feedItunesId?: number | null;
+};
+
+export type RecentDataEpisode = {
+  episodeId: number;
+  episodeTitle: string;
+  episodeDescription?: string;
+  episodeImage?: string;
+  episodeTimestamp: number;
+  episodeAdded: number;
+  episodeEnclosureUrl?: string;
+  episodeEnclosureLength?: number;
+  episodeEnclosureType?: string;
+  episodeDuration?: number;
+  episodeType?: string;
+  feedId: number;
+};
+
+export type RecentDataResponse = {
+  status: boolean;
+  feedCount: number;
+  itemCount: number;
+  max?: number | null;
+  since: number;
+  nextSince?: number | null;
+  description?: string;
+  data?: {
+    position?: number;
+    feeds: RecentDataFeed[];
+    items: RecentDataEpisode[];
+    nextSince?: number | null;
+  };
+};
+
 type RequestInitAugmented = RequestInit & { skipAuth?: boolean };
 
 function normalizeEnvValue(source?: string | null) {
@@ -487,6 +528,20 @@ export class PodcastIndexClient {
     return data.feeds ?? [];
   }
 
+  async recentData(options: { max?: number; since?: number } = {}) {
+    const params = new URLSearchParams();
+    if (options.max) {
+      params.set("max", String(options.max));
+    }
+    if (options.since) {
+      params.set("since", String(options.since));
+    }
+    const query = params.toString();
+    return this.request<RecentDataResponse>(
+      query ? `/recent/data?${query}` : "/recent/data",
+    );
+  }
+
   async trendingPodcasts(options: { max?: number; lang?: string; cat?: string } = {}) {
     const params = new URLSearchParams();
     if (options.max) {
@@ -500,6 +555,39 @@ export class PodcastIndexClient {
     }
     const data = await this.request<{ feeds?: SearchPodcast[] }>(
       `/podcasts/trending?${params.toString()}`,
+    );
+    return data.feeds ?? [];
+  }
+
+  async podcastsByMedium(options: { medium: string; max?: number; startAt?: number }) {
+    const params = new URLSearchParams({ medium: options.medium });
+    if (options.max) {
+      params.set("max", String(options.max));
+    }
+    if (options.startAt) {
+      params.set("start_at", String(options.startAt));
+    }
+    const data = await this.request<{ feeds?: PodcastFeedDetail[] }>(
+      `/podcasts/bymedium?${params.toString()}`,
+    );
+    return data.feeds ?? [];
+  }
+
+  async podcastsByTag(options: {
+    tag: "podcast-value" | "podcast-valueTimeSplit";
+    max?: number;
+    startAt?: number;
+  }) {
+    const queryParts = [options.tag];
+    if (options.max) {
+      queryParts.push(`max=${options.max}`);
+    }
+    if (options.startAt) {
+      queryParts.push(`start_at=${options.startAt}`);
+    }
+    const query = queryParts.join("&");
+    const data = await this.request<{ feeds?: PodcastFeedDetail[] }>(
+      `/podcasts/bytag?${query}`,
     );
     return data.feeds ?? [];
   }

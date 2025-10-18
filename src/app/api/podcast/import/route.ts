@@ -41,11 +41,19 @@ export async function POST(request: Request) {
 
   try {
     // Try to add the feed to PodcastIndex first
-    const result = await service.addPodcastByFeedUrl(feedUrl);
+    const result = await service.addPodcastByFeedUrl(feedUrl, {
+      synchronizeEpisodes: true,
+      fullEpisodeRefresh: true,
+      episodeBatchSize: 1000,
+    });
 
     if (!result) {
       // If not found in PodcastIndex, try to get it directly
-      const fallbackResult = await service.syncPodcastByFeedUrl(feedUrl);
+      const fallbackResult = await service.syncPodcastByFeedUrl(feedUrl, {
+        synchronizeEpisodes: true,
+        fullEpisodeRefresh: true,
+        episodeBatchSize: 1000,
+      });
 
       if (!fallbackResult) {
         await prisma.syncLog.update({

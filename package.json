@@ -10,12 +10,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "job:sync-recent": "tsx scripts/sync-recent-data.ts",
+    "worker:sync-recent": "tsx scripts/worker-sync-recent.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
     "@radix-ui/react-slot": "^1.1.0",
+    "bullmq": "^5.12.2",
     "dotenv": "^17.2.3",
+    "ioredis": "^5.4.1",
     "lucide-react": "^0.479.0",
     "next": "15.5.5",
     "react": "19.1.0",
@@ -44,6 +48,7 @@
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5",
-    "vitest": "^2.1.5"
+    "vitest": "^2.1.5",
+    "tsx": "^4.19.0"
   }
 }

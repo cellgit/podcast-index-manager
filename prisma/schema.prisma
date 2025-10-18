@@ -67,6 +67,7 @@ model Podcast {
   sync_logs          SyncLog[]
   categories         PodcastCategory[]
   value_destinations PodcastValueDestination[]
+  collection_items   PodcastCollectionItem[]
 
   @@index([title], map: "podcasts_title_idx", type: Hash)
   @@index([language], map: "podcasts_language_idx")
@@ -77,48 +78,48 @@ model Podcast {
 }
 
 model Episode {
-  id               Int       @id @default(autoincrement())
-  podcast_id       Int
-  podcast          Podcast   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
-  feed_id          Int
-  podcast_index_id BigInt?   @unique(map: "episodes_podcast_index_id_unique")
-  guid             String?   @db.VarChar(512)
-  title            String
-  description      String?   @db.Text
-  link             String?
-  date_published   DateTime?
-  date_crawled     DateTime?
-  enclosure_url    String?   @db.Text
-  enclosure_type   String?   @db.VarChar(128)
-  enclosure_length Int?      @default(0)
-  duration         Int?
-  explicit         Boolean?  @default(false)
-  episode          Int?
-  episode_type     String?   @db.VarChar(32)
-  season           Int?
-  image            String?
-  image_url_hash   BigInt?
-  feed_itunes_id   Int?
-  feed_image       String?
-  feed_image_url_hash BigInt?
-  feed_url         String?
-  feed_title       String?
-  feed_author      String?
-  feed_language    String?
-  feed_dead        Int?
-  feed_duplicate_of Int?
-  transcript_url   String?
-  chapters_url     String?
-  content_link     String?
-  start_time       DateTime?
-  end_time         DateTime?
-  status           String?   @db.VarChar(32)
-  value_model_type String?
-  value_model_method String?
+  id                    Int       @id @default(autoincrement())
+  podcast_id            Int
+  podcast               Podcast   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
+  feed_id               Int
+  podcast_index_id      BigInt?   @unique(map: "episodes_podcast_index_id_unique")
+  guid                  String?   @db.VarChar(512)
+  title                 String
+  description           String?   @db.Text
+  link                  String?
+  date_published        DateTime?
+  date_crawled          DateTime?
+  enclosure_url         String?   @db.Text
+  enclosure_type        String?   @db.VarChar(128)
+  enclosure_length      Int?      @default(0)
+  duration              Int?
+  explicit              Boolean?  @default(false)
+  episode               Int?
+  episode_type          String?   @db.VarChar(32)
+  season                Int?
+  image                 String?
+  image_url_hash        BigInt?
+  feed_itunes_id        Int?
+  feed_image            String?
+  feed_image_url_hash   BigInt?
+  feed_url              String?
+  feed_title            String?
+  feed_author           String?
+  feed_language         String?
+  feed_dead             Int?
+  feed_duplicate_of     Int?
+  transcript_url        String?
+  chapters_url          String?
+  content_link          String?
+  start_time            DateTime?
+  end_time              DateTime?
+  status                String?   @db.VarChar(32)
+  value_model_type      String?
+  value_model_method    String?
   value_model_suggested String?
-  value_created_on DateTime?
-  created_at       DateTime  @default(now())
-  updated_at       DateTime  @updatedAt
+  value_created_on      DateTime?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
 
   transcripts         EpisodeTranscript[]
   persons             EpisodePerson[]
@@ -166,6 +167,18 @@ model SyncCursor {
   @@map("sync_cursors")
 }
 
+model SyncWorker {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(64)
+  status     String   @db.VarChar(32)
+  last_seen  DateTime @updatedAt
+  details    Json?
+  created_at DateTime @default(now())
+
+  @@index([name], map: "sync_workers_name_idx")
+  @@map("sync_workers")
+}
+
 model Category {
   id         Int      @id
   name       String
@@ -187,6 +200,48 @@ model PodcastCategory {
   @@id([podcast_id, category_id])
   @@index([category_id], map: "podcast_categories_category_idx")
   @@map("podcast_categories")
+}
+
+model PodcastCollection {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(128)
+  description String?  @db.Text
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  items PodcastCollectionItem[]
+
+  @@unique([name], map: "podcast_collections_name_unique")
+  @@map("podcast_collections")
+}
+
+model PodcastCollectionItem {
+  collection_id Int
+  podcast_id    Int
+  position      Int      @default(0)
+  added_at      DateTime @default(now())
+
+  collection PodcastCollection @relation(fields: [collection_id], references: [id], onDelete: Cascade)
+  podcast    Podcast           @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
+
+  @@id([collection_id, podcast_id])
+  @@index([podcast_id], map: "collection_items_podcast_idx")
+  @@map("podcast_collection_items")
+}
+
+model QualityAlert {
+  id          Int       @id @default(autoincrement())
+  severity    String    @db.VarChar(16)
+  title       String
+  description String?   @db.Text
+  status      String    @default("open") @db.VarChar(16)
+  metadata    Json?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  resolved_at DateTime?
+
+  @@index([status], map: "quality_alerts_status_idx")
+  @@map("quality_alerts")
 }
 
 model PodcastValueDestination {
@@ -224,18 +279,18 @@ model EpisodeTranscript {
 }
 
 model EpisodePerson {
-  id         Int      @id @default(autoincrement())
-  episode_id Int
-  episode    Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
+  id              Int      @id @default(autoincrement())
+  episode_id      Int
+  episode         Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
   person_index_id Int?
-  name       String
-  role       String?
-  group_name String?  @map("group")
-  href       String?
-  img        String?
-  metadata   Json?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  name            String
+  role            String?
+  group_name      String?  @map("group")
+  href            String?
+  img             String?
+  metadata        Json?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
   @@index([episode_id], map: "episode_persons_episode_idx")
   @@map("episode_persons")

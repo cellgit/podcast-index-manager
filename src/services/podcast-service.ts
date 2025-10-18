@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 import type {
   EpisodeDetail,
@@ -14,6 +14,34 @@ type PodcastSyncResult = {
   podcast: any;
   episodeDelta: number;
   episodes: any[];
+};
+
+type PrismaExecutor = PrismaClient | Prisma.TransactionClient;
+
+const DEFAULT_EPISODE_BATCH_SIZE = 100;
+
+type SyncPodcastOptions = {
+  synchronizeEpisodes?: boolean;
+  episodeSince?: number;
+  episodeBatchSize?: number;
+  fullEpisodeRefresh?: boolean;
+};
+
+const chunkedAll = async <T, R>(
+  items: readonly T[],
+  batchSize: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> => {
+  if (batchSize <= 0) {
+    throw new Error("batchSize must be greater than 0");
+  }
+  const results: R[] = [];
+  for (let index = 0; index < items.length; index += batchSize) {
+    const slice = items.slice(index, index + batchSize);
+    const sliceResults = await Promise.all(slice.map((item) => task(item)));
+    results.push(...sliceResults);
+  }
+  return results;
 };
 
 const toUnixDate = (value?: number | string | bigint | null) => {
@@ -434,28 +462,47 @@ export class PodcastService {
     return this.client.searchPodcasts(term);
   }
 
-  async syncPodcastByFeedId(feedId: number): Promise<PodcastSyncResult | null> {
+  async syncPodcastByFeedId(
+    feedId: number,
+    options: SyncPodcastOptions = {},
+  ): Promise<PodcastSyncResult | null> {
     const feed = await this.client.podcastByFeedId(feedId);
     if (!feed) {
       return null;
     }
 
     const normalized = normalizeFeedPayload(feed);
-    const client = this.db as any;
+    const podcast = await this.db.$transaction(async (tx) => {
+      const upserted = await tx.podcast.upsert({
+        where: { podcast_index_id: feed.id },
+        create: normalized.createData,
+        update: normalized.updateData,
+      });
 
-    const podcast = await client.podcast.upsert({
-      where: { podcast_index_id: feed.id },
-      create: normalized.createData,
-      update: normalized.updateData,
+      await this.syncPodcastCategories(
+        tx,
+        upserted.id,
+        normalized.categories,
+      );
+      await this.syncPodcastValueDestinations(
+        tx,
+        upserted.id,
+        normalized.valueDestinations,
+      );
+
+      return upserted;
     });
 
-    await this.syncPodcastCategories(podcast.id, normalized.categories);
-    await this.syncPodcastValueDestinations(
-      podcast.id,
-      normalized.valueDestinations,
-    );
-
-    const episodes = await this.syncEpisodes(podcast.id, feed.id);
+    let episodes: any[] = [];
+    const shouldSyncEpisodes =
+      options.synchronizeEpisodes === undefined ? true : options.synchronizeEpisodes;
+    if (shouldSyncEpisodes) {
+      episodes = await this.syncEpisodes(podcast.id, feed.id, {
+        max: options.episodeBatchSize ?? 1000,
+        since: options.episodeSince,
+        fullRefresh: options.fullEpisodeRefresh ?? false,
+      });
+    }
 
     return {
       podcast,
@@ -464,35 +511,198 @@ export class PodcastService {
     };
   }
 
-  async syncPodcastByGuid(guid: string): Promise<PodcastSyncResult | null> {
+  async syncPodcastByGuid(
+    guid: string,
+    options?: SyncPodcastOptions,
+  ): Promise<PodcastSyncResult | null> {
     const feed = await this.client.podcastByGuid(guid);
     if (!feed) {
       return null;
     }
-    return this.syncPodcastByFeedId(feed.id);
+    return this.syncPodcastByFeedId(feed.id, options);
   }
 
-  async syncPodcastByFeedUrl(url: string): Promise<PodcastSyncResult | null> {
+  async syncPodcastByFeedUrl(
+    url: string,
+    options?: SyncPodcastOptions,
+  ): Promise<PodcastSyncResult | null> {
     const feed = await this.client.podcastByFeedUrl(url);
     if (!feed) {
       return null;
     }
-    return this.syncPodcastByFeedId(feed.id);
+    return this.syncPodcastByFeedId(feed.id, options);
   }
 
-  async addPodcastByFeedUrl(url: string): Promise<PodcastSyncResult | null> {
+  async syncPodcastByItunesId(
+    itunesId: number,
+    options?: SyncPodcastOptions,
+  ): Promise<PodcastSyncResult | null> {
+    const feed = await this.client.podcastByItunesId(itunesId);
+    if (!feed) {
+      return null;
+    }
+    return this.syncPodcastByFeedId(feed.id, options);
+  }
+
+  async addPodcastByFeedUrl(
+    url: string,
+    options?: SyncPodcastOptions,
+  ): Promise<PodcastSyncResult | null> {
     const feed = await this.client.addByFeedUrl(url);
     if (!feed) {
       return null;
     }
-    return this.syncPodcastByFeedId(feed.id);
+    return this.syncPodcastByFeedId(feed.id, options);
+  }
+
+  async syncPodcastUsingIdentifiers(
+    identifiers: {
+      feedId?: number;
+      feedUrl?: string;
+      guid?: string;
+      itunesId?: number;
+    },
+    options?: SyncPodcastOptions,
+  ): Promise<PodcastSyncResult | null> {
+    if (identifiers.feedId) {
+      return this.syncPodcastByFeedId(identifiers.feedId, options);
+    }
+    if (identifiers.guid) {
+      return this.syncPodcastByGuid(identifiers.guid, options);
+    }
+    if (identifiers.feedUrl) {
+      return this.syncPodcastByFeedUrl(identifiers.feedUrl, options);
+    }
+    if (identifiers.itunesId) {
+      return this.syncPodcastByItunesId(identifiers.itunesId, options);
+    }
+    throw new Error("至少需要提供 feedId、feedUrl、guid 或 itunesId 之一");
+  }
+
+  async syncRecentData(options: { max?: number } = {}) {
+    const cursorKey = "recent:data";
+    const cursor = await this.db.syncCursor.findUnique({
+      where: { id: cursorKey },
+    });
+    const since = cursor ? Number(cursor.cursor) : undefined;
+
+    const response = await this.client.recentData({
+      max: options.max ?? 500,
+      since,
+    });
+
+    const feeds = response.data?.feeds ?? [];
+    const items = response.data?.items ?? [];
+
+    const nextSince =
+      response.data?.nextSince ?? (response as { nextSince?: number | null }).nextSince ?? null;
+    if (nextSince) {
+      await this.db.syncCursor.upsert({
+        where: { id: cursorKey },
+        create: { id: cursorKey, cursor: String(nextSince) },
+        update: { cursor: String(nextSince) },
+      });
+    }
+
+    const feedIds = new Set<number>();
+    feeds.forEach((feed) => feedIds.add(feed.feedId));
+    items.forEach((item) => feedIds.add(item.feedId));
+
+    const podcastIdMap = new Map<number, number>();
+
+    for (const feedId of feedIds) {
+      let podcast = await this.db.podcast.findUnique({
+        where: { podcast_index_id: feedId },
+      });
+
+      if (!podcast) {
+        const result = await this.syncPodcastByFeedId(feedId, {
+          synchronizeEpisodes: false,
+        });
+        if (!result) {
+          continue;
+        }
+        podcast = result.podcast;
+      } else {
+        const refreshed = await this.syncPodcastByFeedId(feedId, {
+          synchronizeEpisodes: false,
+        });
+        if (refreshed) {
+          podcast = refreshed.podcast;
+        }
+      }
+
+      podcastIdMap.set(feedId, podcast.id);
+    }
+
+    const sortedItems = [...items].sort((a, b) => a.episodeAdded - b.episodeAdded);
+    let episodesProcessed = 0;
+
+    for (const item of sortedItems) {
+      const podcastId = podcastIdMap.get(item.feedId);
+      if (!podcastId) {
+        continue;
+      }
+
+      const detail: EpisodeDetail = {
+        id: item.episodeId,
+        title: item.episodeTitle ?? `Episode ${item.episodeId}`,
+        description: item.episodeDescription ?? undefined,
+        image: item.episodeImage ?? undefined,
+        feedId: item.feedId,
+        datePublished: item.episodeTimestamp,
+        date_published: item.episodeTimestamp,
+        dateCrawled: item.episodeAdded,
+        date_crawled: item.episodeAdded,
+        enclosureUrl: item.episodeEnclosureUrl ?? undefined,
+        enclosureLength: item.episodeEnclosureLength ?? undefined,
+        enclosureType: item.episodeEnclosureType ?? undefined,
+        duration: item.episodeDuration ?? undefined,
+        episodeType: item.episodeType ?? undefined,
+      };
+
+      try {
+        await this.upsertEpisode(podcastId, detail);
+        episodesProcessed += 1;
+      } catch (error) {
+        console.error("Failed to upsert recent episode", {
+          feedId: item.feedId,
+          episodeId: item.episodeId,
+          error,
+        });
+      }
+    }
+
+    return {
+      feedsProcessed: podcastIdMap.size,
+      episodesProcessed,
+      nextSince,
+    };
+  }
+
+  async discoverTrending(options: { max?: number; lang?: string; cat?: string } = {}) {
+    return this.client.trendingPodcasts(options);
+  }
+
+  async discoverRecentFeeds(options: { max?: number; since?: number; lang?: string } = {}) {
+    return this.client.recentFeeds(options);
+  }
+
+  async discoverByMedium(options: { medium: string; max?: number; startAt?: number }) {
+    return this.client.podcastsByMedium(options);
+  }
+
+  async discoverByTag(
+    options: { tag: "podcast-value" | "podcast-valueTimeSplit"; max?: number; startAt?: number },
+  ) {
+    return this.client.podcastsByTag(options);
   }
 
   private async syncPodcastCategories(
+    client: PrismaExecutor,
     podcastId: number,
     categories: { id: number; name: string }[],
   ) {
-    const client = this.db as any;
     await client.podcastCategory.deleteMany({ where: { podcast_id: podcastId } });
 
     if (!categories.length) {
@@ -516,6 +726,7 @@ export class PodcastService {
   }
 
   private async syncPodcastValueDestinations(
+    client: PrismaExecutor,
     podcastId: number,
     valueDestinations: {
       name: string | null;
@@ -527,7 +738,6 @@ export class PodcastService {
       custom_value: string | null;
     }[],
   ) {
-    const client = this.db as any;
     await client.podcastValueDestination.deleteMany({
       where: { podcast_id: podcastId },
     });
@@ -549,38 +759,83 @@ export class PodcastService {
   private async syncEpisodes(
     podcastId: number,
     feedId: number,
+    options: { since?: number; max?: number; fullRefresh?: boolean } = {},
   ): Promise<any[]> {
-    const client = this.db as any;
-    const cursor = await client.syncCursor.findUnique({
-      where: { id: `feed:${feedId}` },
-    });
+    const cursorKey = `feed:${feedId}`;
+    const cursor =
+      options.fullRefresh === true
+        ? null
+        : await this.db.syncCursor.findUnique({
+            where: { id: cursorKey },
+          });
 
-    const since = cursor ? Number(cursor.cursor) : undefined;
-    const items = await this.client.episodesByFeedId(feedId, {
-      max: 1000,
-      since,
-    });
+    let since =
+      options.fullRefresh === true
+        ? options.since
+        : options.since ?? (cursor ? Number(cursor.cursor) : undefined);
 
-    if (!items.length) {
-      return [];
-    }
-
+    const maxPerPage = Math.max(1, options.max ?? DEFAULT_EPISODE_BATCH_SIZE);
     const episodes: any[] = [];
-    for (const item of items) {
-      const episode = await this.upsertEpisode(podcastId, item);
-      episodes.push(episode);
+    let highestTimestamp = since ?? 0;
+    let iterations = 0;
+
+    while (true) {
+      const batch = await this.client.episodesByFeedId(feedId, {
+        max: maxPerPage,
+        since,
+      });
+
+      if (!batch.length) {
+        break;
+      }
+
+      const ordered = [...batch].sort((a, b) => {
+        const left = coerceNumber(a.date_published ?? a.datePublished) ?? 0;
+        const right = coerceNumber(b.date_published ?? b.datePublished) ?? 0;
+        return left - right;
+      });
+
+      const processed = await chunkedAll(
+        ordered,
+        Math.min(10, Math.max(1, Math.floor(maxPerPage / 10))),
+        (item) => this.upsertEpisode(podcastId, item),
+      );
+      episodes.push(...processed);
+
+      const batchMax = ordered
+        .map((item) => coerceNumber(item.date_published ?? item.datePublished) ?? 0)
+        .reduce((max, value) => Math.max(max, value), highestTimestamp);
+
+      if (batchMax > highestTimestamp) {
+        highestTimestamp = batchMax;
+      }
+
+      if (ordered.length < maxPerPage) {
+        break;
+      }
+
+      since = batchMax;
+      iterations += 1;
+
+      if (iterations > 64) {
+        console.warn("syncEpisodes迭代次数达到上限，提前结束", {
+          feedId,
+          since,
+        });
+        break;
+      }
+
+      if (options.fullRefresh) {
+        // PodcastIndex 暂不支持 offset，首次导入最多获取最近 maxPerPage 条
+        break;
+      }
     }
 
-    const newest = items
-      .map((item) => coerceNumber(item.date_published ?? item.datePublished))
-      .filter((value): value is number => value !== undefined)
-      .reduce((max, value) => Math.max(max, value), since ?? 0);
-
-    if (newest > (since ?? 0)) {
-      await client.syncCursor.upsert({
-        where: { id: `feed:${feedId}` },
-        create: { id: `feed:${feedId}`, cursor: String(newest) },
-        update: { cursor: String(newest) },
+    if (highestTimestamp && (!cursor || highestTimestamp > Number(cursor.cursor ?? 0))) {
+      await this.db.syncCursor.upsert({
+        where: { id: cursorKey },
+        create: { id: cursorKey, cursor: String(highestTimestamp) },
+        update: { cursor: String(highestTimestamp) },
       });
     }
 
@@ -591,7 +846,6 @@ export class PodcastService {
     podcastId: number,
     item: EpisodeDetail,
   ): Promise<any> {
-    const client = this.db as any;
     const normalized = normalizeEpisodePayload(item);
 
     const where = normalized.remoteId
@@ -616,22 +870,23 @@ export class PodcastService {
       ...normalized.data,
     };
 
-    const episode = await client.episode.upsert({
-      where,
-      create: createData,
-      update: updateData,
-    });
+    return this.db.$transaction(async (tx) => {
+      const episode = await tx.episode.upsert({
+        where,
+        create: createData,
+        update: updateData,
+      });
 
-    await this.syncEpisodeRelations(episode.id, normalized);
-    return episode;
+      await this.syncEpisodeRelations(tx, episode.id, normalized);
+      return episode;
+    });
   }
 
   private async syncEpisodeRelations(
+    client: PrismaExecutor,
     episodeId: number,
     normalized: NormalizedEpisodePayload,
   ) {
-    const client = this.db as any;
-
     await client.episodeTranscript.deleteMany({
       where: { episode_id: episodeId },
     });

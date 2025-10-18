@@ -1,0 +1,1 @@
+-- Deprecated placeholder generated during migration scaffolding.
