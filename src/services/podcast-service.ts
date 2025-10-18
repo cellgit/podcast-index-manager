@@ -1,9 +1,13 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type {
+  Episode,
+  Podcast,
+  Prisma,
+  PrismaClient,
+} from "@prisma/client";
 
 import type {
   EpisodeDetail,
   EpisodePersonPayload,
-  EpisodeSoundbitePayload,
   EpisodeSocialInteractPayload,
   EpisodeTranscriptPayload,
   PodcastFeedDetail,
@@ -11,9 +15,9 @@ import type {
 } from "@/lib/podcast-index";
 
 type PodcastSyncResult = {
-  podcast: any;
+  podcast: Podcast;
   episodeDelta: number;
-  episodes: any[];
+  episodes: Episode[];
 };
 
 type PrismaExecutor = PrismaClient | Prisma.TransactionClient;
@@ -133,8 +137,8 @@ const asArray = <T>(input: T | T[] | null | undefined): T[] => {
 };
 
 type NormalizedFeedPayload = {
-  createData: Record<string, unknown>;
-  updateData: Record<string, unknown>;
+  createData: Prisma.PodcastUncheckedCreateInput;
+  updateData: Prisma.PodcastUncheckedUpdateInput;
   categories: { id: number; name: string }[];
   valueDestinations: {
     name: string | null;
@@ -147,42 +151,21 @@ type NormalizedFeedPayload = {
   }[];
 };
 
+type EpisodeBaseData = Omit<Prisma.EpisodeUncheckedCreateInput, "podcast_id">;
+
 type NormalizedEpisodePayload = {
   remoteId?: bigint;
   guid: string;
-  data: Record<string, unknown>;
-  transcripts: {
-    url: string;
-    type: string | null;
-    language: string | null;
-    rel: string | null;
-  }[];
-  persons: {
-    person_index_id: number | null;
-    name: string;
-    role: string | null;
-    group_name: string | null;
-    href: string | null;
-    img: string | null;
-    metadata?: Record<string, unknown>;
-  }[];
-  soundbites: { start_time: number; duration: number; title: string }[];
-  socialInteractions: {
-    url: string;
-    protocol: string;
-    account_id: string | null;
-    account_url: string | null;
-    priority: number | null;
-  }[];
-  valueDestinations: {
-    name: string | null;
-    address: string;
-    type: string | null;
-    split: number | null;
-    fee: boolean | null;
-    custom_key: string | null;
-    custom_value: string | null;
-  }[];
+  data: EpisodeBaseData;
+  transcripts: Array<Omit<Prisma.EpisodeTranscriptCreateManyInput, "episode_id">>;
+  persons: Array<Omit<Prisma.EpisodePersonCreateManyInput, "episode_id">>;
+  soundbites: Array<Omit<Prisma.EpisodeSoundbiteCreateManyInput, "episode_id">>;
+  socialInteractions: Array<
+    Omit<Prisma.EpisodeSocialInteractionCreateManyInput, "episode_id">
+  >;
+  valueDestinations: Array<
+    Omit<Prisma.EpisodeValueDestinationCreateManyInput, "episode_id">
+  >;
 };
 
 export const normalizeFeedPayload = (
@@ -216,7 +199,7 @@ export const normalizeFeedPayload = (
         ? inPollingRaw !== 0
         : null;
 
-  const data: Record<string, unknown> = {
+  const data = {
     podcast_index_id: feed.id,
     podcast_guid: coerceString(feed.podcast_guid ?? feed.podcastGuid) ?? null,
     title: feed.title,
@@ -277,11 +260,11 @@ export const normalizeFeedPayload = (
     value_model_type: feed.value?.model?.type ?? null,
     value_model_method: feed.value?.model?.method ?? null,
     value_model_suggested: feed.value?.model?.suggested ?? null,
-  };
+  } satisfies Prisma.PodcastUncheckedCreateInput;
 
   return {
     createData: data,
-    updateData: { ...data },
+    updateData: { ...data } satisfies Prisma.PodcastUncheckedUpdateInput,
     categories,
     valueDestinations: destinations,
   };
@@ -302,7 +285,7 @@ export const normalizeEpisodePayload = (
     );
   }
 
-  const data: Record<string, unknown> = {
+  const data = {
     feed_id: feedIdCandidate,
     title: item.title,
     description: item.description ?? null,
@@ -339,10 +322,9 @@ export const normalizeEpisodePayload = (
     value_model_type: value?.model?.type ?? null,
     value_model_method: value?.model?.method ?? null,
     value_model_suggested: value?.model?.suggested ?? null,
-    value_created_on: toUnixDate(
-      extractNumeric(item.value_created_on ?? item.valueCreatedOn),
-    ) ?? null,
-  };
+    value_created_on:
+      toUnixDate(extractNumeric(item.value_created_on ?? item.valueCreatedOn)) ?? null,
+  } satisfies EpisodeBaseData;
 
   const transcripts = asArray(item.transcripts)
     .filter((transcript): transcript is EpisodeTranscriptPayload => Boolean(transcript?.url))
@@ -360,7 +342,10 @@ export const normalizeEpisodePayload = (
     .map((person) => {
       const { name, role, group, href, img, ...rest } = person;
       const personId = coerceNumber((person as { id?: number | string }).id) ?? null;
-      const metadata = Object.keys(rest).length ? rest : undefined;
+      const metadata: Prisma.InputJsonValue | undefined =
+        Object.keys(rest).length > 0
+          ? (rest as unknown as Prisma.InputJsonValue)
+          : undefined;
       return {
         person_index_id: personId,
         name,
@@ -493,7 +478,7 @@ export class PodcastService {
       return upserted;
     });
 
-    let episodes: any[] = [];
+    let episodes: Episode[] = [];
     const shouldSyncEpisodes =
       options.synchronizeEpisodes === undefined ? true : options.synchronizeEpisodes;
     if (shouldSyncEpisodes) {
@@ -760,7 +745,7 @@ export class PodcastService {
     podcastId: number,
     feedId: number,
     options: { since?: number; max?: number; fullRefresh?: boolean } = {},
-  ): Promise<any[]> {
+  ): Promise<Episode[]> {
     const cursorKey = `feed:${feedId}`;
     const cursor =
       options.fullRefresh === true
@@ -775,7 +760,7 @@ export class PodcastService {
         : options.since ?? (cursor ? Number(cursor.cursor) : undefined);
 
     const maxPerPage = Math.max(1, options.max ?? DEFAULT_EPISODE_BATCH_SIZE);
-    const episodes: any[] = [];
+    const episodes: Episode[] = [];
     let highestTimestamp = since ?? 0;
     let iterations = 0;
 
@@ -845,7 +830,7 @@ export class PodcastService {
   private async upsertEpisode(
     podcastId: number,
     item: EpisodeDetail,
-  ): Promise<any> {
+  ): Promise<Episode> {
     const normalized = normalizeEpisodePayload(item);
 
     const where = normalized.remoteId

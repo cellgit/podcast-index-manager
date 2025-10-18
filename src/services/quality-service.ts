@@ -1,17 +1,13 @@
 import type { PrismaClient } from "@prisma/client";
 
-type Severity = "info" | "warning" | "critical";
+import { logger } from "@/lib/logger";
+import { notifyAlert, type AlertMessage } from "@/lib/notifications";
 
 export class QualityService {
   constructor(private readonly db: PrismaClient) {}
 
   async evaluateAndPersist() {
-    const alerts: Array<{
-      title: string;
-      severity: Severity;
-      description: string;
-      metadata?: Record<string, unknown>;
-    }> = [];
+    const alerts: AlertMessage[] = [];
 
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const failedSyncs = await this.db.syncLog.count({
@@ -65,13 +61,53 @@ export class QualityService {
       });
     }
 
+    const missingTranscripts = await this.db.episode.count({
+      where: {
+        date_published: { gte: since24h },
+        transcript_url: null,
+        podcast: { medium: { in: ["podcast", "music"] } },
+      },
+    });
+    if (missingTranscripts > 0) {
+      alerts.push({
+        title: "节目缺少转录文本",
+        severity: "info",
+        description: `最近 24 小时抓取的节目有 ${missingTranscripts} 条缺少转录，可检查内容库或上游转录服务。`,
+        metadata: { missingTranscripts },
+      });
+    }
+
     await Promise.all(alerts.map((alert) => this.upsertAlert(alert)));
 
     // Resolve old alerts if no longer triggered
     await this.resolveStaleAlerts(alerts.map((alert) => alert.title));
 
+    if (alerts.length > 0) {
+      logger.info(
+        {
+          alerts: alerts.map((alert) => ({
+            title: alert.title,
+            severity: alert.severity,
+            metadata: alert.metadata,
+          })),
+        },
+        "quality alerts generated",
+      );
+    } else {
+      logger.debug("quality checks passed without alerts");
+    }
+
     await Promise.all(
-      alerts.map((alert) => this.notifySlack(alert).catch(() => undefined)),
+      alerts.map(async (alert) => {
+        try {
+          await notifyAlert(alert);
+        } catch (error) {
+          logger.error(
+            { err: error, alert },
+            "failed to dispatch quality alert notification",
+          );
+        }
+      }),
     );
 
     return alerts;
@@ -92,12 +128,7 @@ export class QualityService {
     });
   }
 
-  private async upsertAlert(alert: {
-    title: string;
-    severity: Severity;
-    description: string;
-    metadata?: Record<string, unknown>;
-  }) {
+  private async upsertAlert(alert: AlertMessage) {
     const existing = await this.db.qualityAlert.findFirst({
       where: { title: alert.title, status: "open" },
     });
@@ -132,25 +163,6 @@ export class QualityService {
         },
       },
       data: { status: "resolved", resolved_at: new Date() },
-    });
-  }
-
-  private async notifySlack(alert: {
-    title: string;
-    severity: Severity;
-    description: string;
-    metadata?: Record<string, unknown>;
-  }) {
-    const webhook = process.env.SLACK_WEBHOOK_URL;
-    if (!webhook || alert.severity === "info") {
-      return;
-    }
-    await fetch(webhook, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: `*[${alert.severity.toUpperCase()}]* ${alert.title}\n${alert.description}`,
-      }),
     });
   }
 }

@@ -1,13 +1,17 @@
-import { Worker, Queue } from "bullmq";
+import { Worker } from "bullmq";
+import type { Prisma } from "@prisma/client";
 
 import { createPodcastIndexClient } from "@/lib/podcast-index";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { PodcastService } from "@/services/podcast-service";
 import { QualityService } from "@/services/quality-service";
 
 import { QUEUE_NAME, createRedisConnection } from "./config";
+import { getQueueBundle } from "./queue";
 
 const JOB_NAME = "sync-recent-data" as const;
+const WORKER_NAME = "sync-recent";
 
 type SyncRecentJobPayload = {
   max?: number;
@@ -22,6 +26,13 @@ export function registerSyncRecentWorker() {
   const worker = new Worker<SyncRecentJobPayload>(
     QUEUE_NAME,
     async (job) => {
+      logger.info(
+        {
+          jobId: job.id,
+          payload: job.data,
+        },
+        "sync-recent job started",
+      );
       if (!prisma) {
         throw new Error("数据库未配置，无法执行同步");
       }
@@ -32,52 +43,41 @@ export function registerSyncRecentWorker() {
       const quality = new QualityService(prisma);
       await quality.evaluateAndPersist();
 
-      await prisma.syncWorker.upsert({
-        where: { name: "sync-recent" },
-        create: {
-          name: "sync-recent",
-          status: "online",
-          details: {
-            lastJobId: job.id,
-            summary,
-            triggeredBy: job.data.triggeredBy ?? "schedule",
-          },
+      const workerDetails = {
+        lastJobId: job.id,
+        summary,
+        triggeredBy: job.data.triggeredBy ?? "schedule",
+      } satisfies Prisma.JsonObject;
+      await upsertSyncWorkerStatus("online", workerDetails);
+
+      logger.info(
+        {
+          jobId: job.id,
+          summary,
         },
-        update: {
-          status: "online",
-          details: {
-            lastJobId: job.id,
-            summary,
-            triggeredBy: job.data.triggeredBy ?? "schedule",
-          },
-        },
-      });
+        "sync-recent job completed",
+      );
 
       return summary;
     },
     { connection }
   );
 
+  worker.on("active", (job) => {
+    logger.debug({ jobId: job.id }, "sync-recent job active");
+  });
+
   worker.on("failed", async (job, err) => {
+    logger.error(
+      { err, jobId: job?.id },
+      "sync-recent job failed",
+    );
     if (prisma) {
-      await prisma.syncWorker.upsert({
-        where: { name: "sync-recent" },
-        create: {
-          name: "sync-recent",
-          status: "error",
-          details: {
-            jobId: job?.id,
-            error: err.message,
-          },
-        },
-        update: {
-          status: "error",
-          details: {
-            jobId: job?.id,
-            error: err.message,
-          },
-        },
-      });
+      const errorDetails = {
+        jobId: job?.id ?? null,
+        error: err.message,
+      } satisfies Prisma.JsonObject;
+      await upsertSyncWorkerStatus("error", errorDetails);
     }
   });
 
@@ -88,10 +88,44 @@ export async function enqueueSyncRecentJob(payload: SyncRecentJobPayload = {}) {
   if (!process.env.REDIS_URL) {
     throw new Error("REDIS_URL 未配置，无法创建任务");
   }
-  const connection = createRedisConnection();
-  const queue = new Queue<SyncRecentJobPayload>(QUEUE_NAME, { connection });
-  return queue.add(JOB_NAME, payload, {
+  const bundle = getQueueBundle();
+  if (!bundle) {
+    throw new Error("任务队列未启用，无法创建任务");
+  }
+  const job = await bundle.queue.add(JOB_NAME, payload, {
     removeOnComplete: true,
     removeOnFail: false,
   });
+  logger.info(
+    { jobId: job.id, payload, queueName: QUEUE_NAME },
+    "sync-recent job enqueued",
+  );
+  return job;
+}
+
+async function upsertSyncWorkerStatus(
+  status: string,
+  details: Prisma.JsonObject,
+) {
+  if (!prisma) {
+    return;
+  }
+
+  const updateResult = await prisma.syncWorker.updateMany({
+    where: { name: WORKER_NAME },
+    data: {
+      status,
+      details,
+    },
+  });
+
+  if (updateResult.count === 0) {
+    await prisma.syncWorker.create({
+      data: {
+        name: WORKER_NAME,
+        status,
+        details,
+      },
+    });
+  }
 }

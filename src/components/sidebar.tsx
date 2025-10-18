@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  Library,
-  ListChecks,
-  Mic2,
-  Settings,
-} from "lucide-react";
+import { Activity, LayoutDashboard, Library, ListChecks, Mic2, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -47,6 +41,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: ListChecks,
     href: "/tasks",
     isActive: (pathname) => pathname.startsWith("/tasks"),
+  },
+  {
+    id: "queue",
+    label: "队列面板",
+    icon: Activity,
+    href: "/dashboard/queue",
+    isActive: (pathname) => pathname.startsWith("/dashboard/queue"),
   },
   {
     id: "settings",

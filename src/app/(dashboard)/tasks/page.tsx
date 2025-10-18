@@ -1,4 +1,5 @@
 import { SyncStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import Link from "next/link";
 import { Clock, ClipboardList, AlertTriangle, CheckCircle, Server } from "lucide-react";
 
@@ -29,6 +30,17 @@ type TasksPageProps = {
 };
 
 const DEFAULT_TAKE = 100;
+
+const extractErrorMessage = (value: Prisma.JsonValue | null | undefined) => {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return undefined;
+  }
+  const message = (value as Record<string, unknown>).message;
+  return typeof message === "string" ? message : undefined;
+};
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
   const db = prisma;
@@ -201,7 +213,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                           {log.finished_at ? formatDateTime(log.finished_at) : "—"}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {log.message ?? log.error?.message ?? "—"}
+                          {log.message ?? extractErrorMessage(log.error) ?? "—"}
                         </TableCell>
                       </TableRow>
                     ))

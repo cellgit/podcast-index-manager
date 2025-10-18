@@ -578,7 +578,7 @@ export class PodcastIndexClient {
     max?: number;
     startAt?: number;
   }) {
-    const queryParts = [options.tag];
+    const queryParts: string[] = [options.tag];
     if (options.max) {
       queryParts.push(`max=${options.max}`);
     }
