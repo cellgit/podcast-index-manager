@@ -2,28 +2,36 @@
 import dns from "node:dns";
 import { setGlobalDispatcher, Agent, ProxyAgent } from "undici";
 
-// 1) 让 Node 解析时优先 IPv4（等价于 curl 的 -4）
-dns.setDefaultResultOrder("ipv4first");
+const bootstrapState = globalThis as {
+  __podcastIndexBootstrap?: boolean;
+};
 
-// 2) 若存在显式代理，则用 ProxyAgent；否则用直连 Agent。
-//    这能保证 VSCode 里运行的 Node 进程与浏览器看到的“通路”一致。
-const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
-const agent = httpsProxy
-  ? new ProxyAgent(httpsProxy)
-  : new Agent({
-      keepAliveTimeout: 60_000,
-      connect: {
-        timeout: 15_000, // 连接超时（毫秒）
-        family: 4,       // 强制 IPv4，避免走 IPv6 黑洞
-      },
-    });
+if (!bootstrapState.__podcastIndexBootstrap) {
+  // 1) 让 Node 解析时优先 IPv4（等价于 curl 的 -4）
+  dns.setDefaultResultOrder("ipv4first");
 
-setGlobalDispatcher(agent);
+  // 2) 若存在显式代理，则用 ProxyAgent；否则用直连 Agent。
+  //    这能保证 VSCode 里运行的 Node 进程与浏览器看到的“通路”一致。
+  const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+  const agent = httpsProxy
+    ? new ProxyAgent(httpsProxy)
+    : new Agent({
+        keepAliveTimeout: 60_000,
+        connect: {
+          timeout: 15_000, // 连接超时（毫秒）
+          family: 4, // 强制 IPv4，避免走 IPv6 黑洞
+        },
+      });
 
-// 3) 可选：白名单直连该域名（即使系统/进程设了代理）
-const noProxy = process.env.NO_PROXY || process.env.no_proxy || "";
-if (!/(^|,)\s*api\.podcastindex\.org\s*(,|$)/i.test(noProxy)) {
-  process.env.NO_PROXY = [noProxy, "api.podcastindex.org"].filter(Boolean).join(",");
+  setGlobalDispatcher(agent);
+
+  // 3) 可选：白名单直连该域名（即使系统/进程设了代理）
+  const noProxy = process.env.NO_PROXY || process.env.no_proxy || "";
+  if (!/(^|,)\s*api\.podcastindex\.org\s*(,|$)/i.test(noProxy)) {
+    process.env.NO_PROXY = [noProxy, "api.podcastindex.org"].filter(Boolean).join(",");
+  }
+
+  bootstrapState.__podcastIndexBootstrap = true;
 }
 
 

@@ -297,7 +297,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                     cursorInfo.map((cursor) => (
                       <div
                         key={cursor.id}
-                        className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs"
+                        className="space-y-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs"
                       >
                         <div className="space-y-1">
                           <p className="font-medium text-foreground">{cursor.id}</p>
@@ -305,8 +305,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                             最近更新：{formatRelative(cursor.updated_at)}
                           </p>
                         </div>
-                        <Badge variant="outline" className="gap-1">
-                          <Server className="h-3 w-3" />
+                        <Badge variant="outline" className="inline-flex max-w-full items-start gap-1 break-all text-[10px]">
+                          <Server className="mt-0.5 h-3 w-3 shrink-0" />
                           {cursor.cursor}
                         </Badge>
                       </div>

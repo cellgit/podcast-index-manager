@@ -115,7 +115,7 @@ export function QueueBulkActions({ counts, disabled = false }: QueueBulkActionsP
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2">
         {ACTIONS.map((config) => {
           const Icon = config.icon;
           const count = config.highlightCount ? config.highlightCount(counts) : 0;
@@ -127,7 +127,7 @@ export function QueueBulkActions({ counts, disabled = false }: QueueBulkActionsP
               size="sm"
               disabled={isDisabled || pendingKey === config.key}
               className={cn(
-                "h-auto items-start justify-start rounded-lg py-3 text-left",
+                "h-auto w-full max-w-full items-start justify-start rounded-lg py-3 text-left",
                 count > 0 ? "border-primary/50" : "",
               )}
               onClick={() => runAction(config)}
@@ -138,11 +138,13 @@ export function QueueBulkActions({ counts, disabled = false }: QueueBulkActionsP
                 <Icon className="mr-2 h-4 w-4" />
               )}
               <span className="flex flex-col text-xs leading-5">
-                <span className="font-medium text-foreground">
+                <span className="font-medium text-foreground whitespace-normal break-words">
                   {config.label}
                   {count > 0 ? `（${count}）` : ""}
                 </span>
-                <span className="text-muted-foreground">{config.description}</span>
+                <span className="text-muted-foreground whitespace-normal break-words">
+                  {config.description}
+                </span>
               </span>
             </Button>
           );

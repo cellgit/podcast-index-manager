@@ -6,16 +6,29 @@ import { Loader2, RotateCcw, Trash2, Rocket, FileX } from "lucide-react";
 import { SyncStatus } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type QueueJobActionsProps = {
   logId: number;
   jobId: string;
   syncStatus: SyncStatus;
+  onDeleteSuccess?: (logId: number) => void;
 };
 
-export function QueueJobActions({ logId, jobId, syncStatus }: QueueJobActionsProps) {
+export function QueueJobActions({ logId, jobId, syncStatus, onDeleteSuccess }: QueueJobActionsProps) {
   const router = useRouter();
   const [pending, setPending] = useState<"retry" | "remove" | "promote" | "delete-log" | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const run = async (
@@ -47,9 +60,6 @@ export function QueueJobActions({ logId, jobId, syncStatus }: QueueJobActionsPro
   };
 
   const deleteLog = async () => {
-    if (pending) {
-      return;
-    }
     setPending("delete-log");
     setError(null);
     try {
@@ -66,11 +76,16 @@ export function QueueJobActions({ logId, jobId, syncStatus }: QueueJobActionsPro
             : `删除失败（${response.status}）`,
         );
       }
-      router.refresh();
+      if (typeof onDeleteSuccess === "function") {
+        onDeleteSuccess(logId);
+      } else {
+        router.refresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
     } finally {
       setPending(null);
+      setConfirmOpen(false);
     }
   };
 
@@ -134,20 +149,41 @@ export function QueueJobActions({ logId, jobId, syncStatus }: QueueJobActionsPro
             移除
           </Button>
         ) : null}
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={isPending}
-          onClick={deleteLog}
-          className="h-7 gap-1 text-[11px]"
-        >
-          {pending === "delete-log" ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <FileX className="h-3.5 w-3.5" />
-          )}
-          删除记录
-        </Button>
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isPending}
+              className="h-7 gap-1 text-[11px]"
+            >
+              {pending === "delete-log" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileX className="h-3.5 w-3.5" />
+              )}
+              删除记录
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>删除任务记录</AlertDialogTitle>
+              <AlertDialogDescription>
+                删除后将无法恢复该任务的历史记录，确认继续？
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={pending === "delete-log"}>取消</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={deleteLog}
+                disabled={pending === "delete-log"}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive"
+              >
+                确认删除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         {!jobId ? (
           <span className="self-center text-[11px] text-muted-foreground">无队列关联</span>
         ) : null}

@@ -48,14 +48,16 @@ export function RecentSyncButton() {
       <Button
         onClick={triggerSync}
         disabled={state === "loading"}
-        className="w-full justify-center"
+        className="w-full items-center justify-center gap-2 whitespace-normal px-4 py-3 text-[21px] leading-6"
       >
         {state === "loading" ? (
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <Rocket className="mr-2 h-4 w-4" />
+          <Rocket className="h-4 w-4" />
         )}
-        立即同步 PodcastIndex 增量
+        <span className="max-w-[220px] text-center">
+          立即同步增量
+        </span>
       </Button>
       {message ? (
         <p
