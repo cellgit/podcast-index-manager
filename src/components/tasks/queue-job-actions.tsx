@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, RotateCcw, Trash2, Rocket, FileX } from "lucide-react";
+import { Loader2, RotateCcw, Rocket, FileX } from "lucide-react";
 import { SyncStatus } from "@prisma/client";
 
 import { Button } from "@/components/ui/button";
@@ -25,15 +25,20 @@ type QueueJobActionsProps = {
   onDeleteSuccess?: (logId: number) => void;
 };
 
-export function QueueJobActions({ logId, jobId, syncStatus, onDeleteSuccess }: QueueJobActionsProps) {
+export function QueueJobActions({
+  logId,
+  jobId,
+  syncStatus,
+  onDeleteSuccess,
+}: QueueJobActionsProps) {
   const router = useRouter();
-  const [pending, setPending] = useState<"retry" | "remove" | "promote" | "delete-log" | null>(null);
+  const [pending, setPending] = useState<"retry" | "promote" | "delete-log" | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const run = async (
-    action: "retryJob" | "removeJob" | "promoteJob",
-    nextPending: "retry" | "remove" | "promote",
+    action: "retryJob" | "promoteJob",
+    nextPending: "retry" | "promote",
   ) => {
     setPending(nextPending);
     setError(null);
@@ -93,7 +98,6 @@ export function QueueJobActions({ logId, jobId, syncStatus, onDeleteSuccess }: Q
 
   const allowRetry = jobId && syncStatus === SyncStatus.FAILED;
   const allowPromote = jobId && syncStatus === SyncStatus.PENDING;
-  const allowRemove = jobId && (syncStatus === SyncStatus.PENDING || syncStatus === SyncStatus.FAILED);
 
   return (
     <div className="flex flex-col items-end gap-2 text-xs">
@@ -131,22 +135,6 @@ export function QueueJobActions({ logId, jobId, syncStatus, onDeleteSuccess }: Q
               <Rocket className="h-3.5 w-3.5" />
             )}
             立即执行
-          </Button>
-        ) : null}
-        {allowRemove ? (
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={isPending}
-            onClick={() => run("removeJob", "remove")}
-            className="h-7 gap-1 text-[11px]"
-          >
-            {pending === "remove" ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
-            移除
           </Button>
         ) : null}
         <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
