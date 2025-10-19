@@ -31,7 +31,7 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
     console.error("无法连接数据库或执行查询失败", error);
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2021"
+      (error.code === "P2021" || error.code === "P2022")
     ) {
       return <DatabaseConfigurationNotice migrationRequired />;
     }

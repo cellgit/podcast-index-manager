@@ -14,6 +14,7 @@ import type {
   PodcastIndexClient,
   SearchPodcast,
 } from "@/lib/podcast-index";
+import { notifyAlert } from "@/lib/notifications";
 
 const TRENDING_CACHE_TTL_MS = Number(
   process.env.PODCAST_INDEX_TRENDING_CACHE_TTL_MS ?? 5 * 60 * 1000,
@@ -1098,7 +1099,8 @@ export class PodcastService {
       ...normalized.data,
     };
 
-    return this.db.$transaction(async (tx) => {
+    const { episode, isNew } = await this.db.$transaction(async (tx) => {
+      const existing = await tx.episode.findUnique({ where });
       const episode = await tx.episode.upsert({
         where,
         create: createData,
@@ -1106,8 +1108,14 @@ export class PodcastService {
       });
 
       await this.syncEpisodeRelations(tx, episode.id, normalized);
-      return episode;
+      return { episode, isNew: !existing };
     });
+
+    if (isNew) {
+      await this.reportEpisodeMetadataGaps(podcastId, episode);
+    }
+
+    return episode;
   }
 
   private async syncEpisodeRelations(
@@ -1169,6 +1177,46 @@ export class PodcastService {
           ...destination,
         })),
       });
+    }
+  }
+
+  private async reportEpisodeMetadataGaps(podcastId: number, episode: Episode) {
+    const missing: string[] = [];
+    const title = episode.title?.trim();
+    if (!title) {
+      missing.push("标题");
+    }
+    const description = episode.description?.trim();
+    if (!description) {
+      missing.push("描述");
+    }
+    const hasArtwork =
+      Boolean(episode.image && episode.image.trim().length) ||
+      Boolean(episode.feed_image && episode.feed_image.trim().length);
+    if (!hasArtwork) {
+      missing.push("封面");
+    }
+
+    if (missing.length === 0) {
+      return;
+    }
+
+    const identifier = title ?? episode.guid ?? `episode-${episode.id}`;
+
+    try {
+      await notifyAlert({
+        title: "节目元数据缺失",
+        severity: "warning",
+        description: `播客节目 ${identifier} 缺少 ${missing.join("、")}，请尽快补充元数据。`,
+        metadata: {
+          podcastId,
+          episodeId: episode.id,
+          guid: episode.guid,
+          missing,
+        },
+      });
+    } catch (error) {
+      console.error("failed to dispatch metadata alert", error);
     }
   }
 }

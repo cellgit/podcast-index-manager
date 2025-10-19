@@ -1,5 +1,4 @@
-import { SyncStatus } from "@prisma/client";
-import type { Prisma } from "@prisma/client";
+import { Prisma, SyncStatus } from "@prisma/client";
 import Link from "next/link";
 import { Clock, ClipboardList, AlertTriangle, CheckCircle, Server } from "lucide-react";
 
@@ -14,14 +13,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { QueueBulkActions } from "@/components/tasks/queue-bulk-actions";
+import { getQueueBundle } from "@/jobs/queue";
+import { TaskLogPanel } from "@/components/tasks/task-log-panel";
 
 type TasksPageProps = {
   searchParams: Promise<{
@@ -53,40 +47,94 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [pendingCount, runningCount, success24h, failed24h, logs, cursorInfo, workers] = await Promise.all([
-    db.syncLog.count({ where: { status: SyncStatus.PENDING } }),
-    db.syncLog.count({ where: { status: SyncStatus.RUNNING } }),
-    db.syncLog.count({
-      where: { status: SyncStatus.SUCCESS, started_at: { gte: since24h } },
-    }),
-    db.syncLog.count({
-      where: { status: SyncStatus.FAILED, started_at: { gte: since24h } },
-    }),
-    db.syncLog.findMany({
-      where: statusFilter ? { status: statusFilter } : undefined,
-      orderBy: { started_at: "desc" },
-      take: DEFAULT_TAKE,
-      include: {
-        podcast: {
-          select: { id: true, title: true },
+  let taskData;
+  try {
+    taskData = await Promise.all([
+      db.syncLog.count({ where: { status: SyncStatus.PENDING } }),
+      db.syncLog.count({ where: { status: SyncStatus.RUNNING } }),
+      db.syncLog.count({
+        where: { status: SyncStatus.SUCCESS, started_at: { gte: since24h } },
+      }),
+      db.syncLog.count({
+        where: { status: SyncStatus.FAILED, started_at: { gte: since24h } },
+      }),
+      db.syncLog.findMany({
+        where: statusFilter ? { status: statusFilter } : undefined,
+        orderBy: { started_at: "desc" },
+        take: DEFAULT_TAKE,
+        include: {
+          podcast: {
+            select: { id: true, title: true },
+          },
         },
-      },
-    }),
-    db.syncCursor.findMany({
-      orderBy: { updated_at: "desc" },
-      take: 50,
-    }),
-    db.syncWorker.findMany({
-      orderBy: { last_seen: "desc" },
-    }),
-  ]);
+      }),
+      db.syncCursor.findMany({
+        orderBy: { updated_at: "desc" },
+        take: 50,
+      }),
+      db.syncWorker.findMany({
+        orderBy: { last_seen: "desc" },
+      }),
+    ]);
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2021" || error.code === "P2022")
+    ) {
+      return <MigrationRequiredNotice />;
+    }
+    throw error;
+  }
 
-  const statusBadges: Record<SyncStatus, { label: string; variant: "secondary" | "warning" | "success" | "destructive" }> = {
-    [SyncStatus.PENDING]: { label: "排队中", variant: "secondary" },
-    [SyncStatus.RUNNING]: { label: "运行中", variant: "warning" },
-    [SyncStatus.SUCCESS]: { label: "成功", variant: "success" },
-    [SyncStatus.FAILED]: { label: "失败", variant: "destructive" },
+  const [pendingCount, runningCount, success24h, failed24h, logs, cursorInfo, workers] = taskData;
+
+  const queueBundle = process.env.REDIS_URL ? getQueueBundle() : null;
+  const queueSummary: {
+    available: boolean;
+    counts: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+    } | null;
+  } = {
+    available: false,
+    counts: null,
   };
+
+  if (queueBundle?.queue) {
+    try {
+      const counts = await queueBundle.queue.getJobCounts(
+        "waiting",
+        "active",
+        "completed",
+        "failed",
+        "delayed",
+      );
+      queueSummary.available = true;
+      queueSummary.counts = {
+        waiting: counts.waiting ?? 0,
+        active: counts.active ?? 0,
+        completed: counts.completed ?? 0,
+        failed: counts.failed ?? 0,
+        delayed: counts.delayed ?? 0,
+      };
+    } catch (error) {
+      console.error("Failed to load queue summary", error);
+    }
+  }
+
+  const tableLogs = logs.map((log) => ({
+    id: log.id,
+    jobType: log.job_type,
+    status: log.status,
+    startedAt: log.started_at.toISOString(),
+    finishedAt: log.finished_at ? log.finished_at.toISOString() : null,
+    message: log.message ?? extractErrorMessage(log.error) ?? null,
+    podcast: log.podcast ? { id: log.podcast.id, title: log.podcast.title } : null,
+    queueJobId: log.queue_job_id,
+  }));
 
   return (
     <>
@@ -166,73 +214,43 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>订阅源</TableHead>
-                    <TableHead>任务</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>开始时间</TableHead>
-                    <TableHead>结束时间</TableHead>
-                    <TableHead>说明</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {logs.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
-                        暂无任务记录。
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    logs.map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell>
-                          {log.podcast ? (
-                            <Link
-                              href={`/podcast/${log.podcast.id}`}
-                              className="text-sm font-medium text-foreground hover:text-primary hover:underline"
-                            >
-                              {log.podcast.title}
-                            </Link>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">未关联</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm">{log.job_type}</TableCell>
-                        <TableCell>
-                          <Badge variant={statusBadges[log.status].variant}>
-                            {statusBadges[log.status].label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {formatDateTime(log.started_at)}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {log.finished_at ? formatDateTime(log.finished_at) : "—"}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {log.message ?? extractErrorMessage(log.error) ?? "—"}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+            <CardContent>
+              <TaskLogPanel logs={tableLogs} />
             </CardContent>
           </Card>
 
           <div className="space-y-6">
+          <Card className="border-border/70">
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-base">增量同步</CardTitle>
+              <CardDescription>
+                立即从 PodcastIndex /recent/data 获取最新更新，保持目录新鲜。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RecentSyncButton />
+            </CardContent>
+          </Card>
+
             <Card className="border-border/70">
               <CardHeader className="space-y-1">
-                <CardTitle className="text-base">增量同步</CardTitle>
+                <CardTitle className="text-base">队列控制</CardTitle>
                 <CardDescription>
-                  立即从 PodcastIndex /recent/data 获取最新更新，保持目录新鲜。
+                  按状态批量处理任务，保持队列干净并优先处理异常。
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <RecentSyncButton />
+              <CardContent className="space-y-4">
+                <div className="grid gap-2 text-xs text-muted-foreground">
+                  <QueueCountRow label="排队中" value={queueSummary.counts?.waiting ?? 0} />
+                  <QueueCountRow label="延迟执行" value={queueSummary.counts?.delayed ?? 0} />
+                  <QueueCountRow label="运行中" value={queueSummary.counts?.active ?? 0} />
+                  <QueueCountRow label="已完成" value={queueSummary.counts?.completed ?? 0} />
+                  <QueueCountRow label="失败" value={queueSummary.counts?.failed ?? 0} />
+                </div>
+                <QueueBulkActions
+                  counts={queueSummary.available ? queueSummary.counts : null}
+                  disabled={!queueSummary.available}
+                />
               </CardContent>
             </Card>
 
@@ -354,14 +372,13 @@ function StatusFilterLink({ label, href, active }: StatusFilterLinkProps) {
   );
 }
 
-function formatDateTime(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    hour12: false,
-  }).format(date);
+function QueueCountRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+      <span>{label}</span>
+      <span className="font-medium text-foreground">{value}</span>
+    </div>
+  );
 }
 
 function formatRelative(date: Date) {
@@ -379,4 +396,28 @@ function formatRelative(date: Date) {
   }
   const days = Math.round(hours / 24);
   return `${days} 天前`;
+}
+
+function MigrationRequiredNotice() {
+  return (
+    <main className="flex flex-1 items-center justify-center px-4 py-10">
+      <Card className="max-w-lg border-dashed border-primary/50">
+        <CardHeader>
+          <CardTitle className="text-xl">需要同步数据库结构</CardTitle>
+          <CardDescription>
+            检测到缺少最新的 Prisma 迁移（例如新增的
+            <code className="mx-1 rounded bg-muted px-1 py-0.5 text-[11px]">queue_job_id</code>
+            列或关联的队列表）。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>请在终端执行以下命令以更新数据库 schema：</p>
+          <pre className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+            npm run prisma:migrate
+          </pre>
+          <p>迁移完成后刷新页面即可恢复任务中心数据。</p>
+        </CardContent>
+      </Card>
+    </main>
+  );
 }

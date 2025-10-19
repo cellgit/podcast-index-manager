@@ -69,6 +69,7 @@ model Podcast {
   categories         PodcastCategory[]
   value_destinations PodcastValueDestination[]
   collection_items   PodcastCollectionItem[]
+  editorial          PodcastEditorial?
 
   @@index([title], map: "podcasts_title_idx", type: Hash)
   @@index([language], map: "podcasts_language_idx")
@@ -142,6 +143,7 @@ model SyncLog {
   podcast     Podcast?   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
   job_type    String     @db.VarChar(64)
   status      SyncStatus
+  queue_job_id String?   @db.VarChar(64)
   started_at  DateTime   @default(now())
   finished_at DateTime?
   payload     Json?
@@ -150,6 +152,7 @@ model SyncLog {
 
   @@index([status, started_at(sort: Desc)], map: "sync_logs_status_started_idx")
   @@index([podcast_id, started_at(sort: Desc)], map: "sync_logs_podcast_started_idx")
+  @@index([queue_job_id], map: "sync_logs_queue_job_idx")
   @@map("sync_logs")
 }
 
@@ -261,6 +264,34 @@ model PodcastValueDestination {
 
   @@index([podcast_id], map: "podcast_value_destinations_podcast_idx")
   @@map("podcast_value_destinations")
+}
+
+model PodcastEditorial {
+  podcast_id     Int                      @id
+  podcast        Podcast                  @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
+  status         PodcastEditorialStatus   @default(ACTIVE)
+  priority       PodcastEditorialPriority @default(NORMAL)
+  display_title  String?
+  display_author String?
+  display_image  String?
+  tags           String[]                 @default([]) @db.Text
+  notes          String?                  @db.Text
+  created_at     DateTime                 @default(now())
+  updated_at     DateTime                 @updatedAt
+
+  @@map("podcast_editorials")
+}
+
+enum PodcastEditorialStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum PodcastEditorialPriority {
+  LOW
+  NORMAL
+  HIGH
 }
 
 model EpisodeTranscript {

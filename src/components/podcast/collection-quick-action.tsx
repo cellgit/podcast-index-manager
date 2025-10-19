@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, PlusCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ export function CollectionQuickAction({ podcastId, collections }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
 
   const handleAdd = async (collectionId: number) => {
     setState("loading");
@@ -39,6 +41,7 @@ export function CollectionQuickAction({ podcastId, collections }: Props) {
       }
       setState("success");
       setMessage("已加入收藏集");
+      router.refresh();
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "添加失败");

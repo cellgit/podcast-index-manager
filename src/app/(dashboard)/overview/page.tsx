@@ -9,7 +9,7 @@ import {
   RefreshCcw,
   Clock3,
 } from "lucide-react";
-import { SyncStatus } from "@prisma/client";
+import { Prisma, SyncStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { PodcastSearch } from "@/components/podcast/podcast-search";
@@ -52,6 +52,73 @@ export default async function OverviewPage() {
 
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+  let dashboardData;
+  try {
+    dashboardData = await Promise.all([
+      db.podcast.findMany({
+        orderBy: { updated_at: "desc" },
+        take: 50,
+        include: {
+          episodes: {
+            orderBy: { date_published: "desc" },
+            take: 3,
+          },
+        },
+      }),
+      db.podcast.count(),
+      db.episode.findMany({
+        orderBy: { date_published: "desc" },
+        take: 50,
+        include: {
+          podcast: true,
+        },
+      }),
+      db.syncLog.findMany({
+        orderBy: { started_at: "desc" },
+        take: 20,
+        include: {
+          podcast: true,
+        },
+      }),
+      db.episode.count(),
+      db.episode.count({
+        where: {
+          date_published: { gte: since24h },
+        },
+      }),
+      db.syncLog.count({
+        where: {
+          status: SyncStatus.PENDING,
+        },
+      }),
+      db.syncLog.count({
+        where: {
+          status: SyncStatus.SUCCESS,
+          started_at: { gte: since24h },
+        },
+      }),
+      db.syncLog.count({
+        where: {
+          status: SyncStatus.FAILED,
+          started_at: { gte: since24h },
+        },
+      }),
+      db.qualityAlert.findMany({
+        where: { status: "open" },
+        orderBy: { created_at: "desc" },
+        take: 5,
+      }),
+    ]);
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2021" || error.code === "P2022")
+    ) {
+      return <MigrationRequiredNotice />;
+    }
+    throw error;
+  }
+
   const [
     podcasts,
     totalPodcasts,
@@ -63,61 +130,7 @@ export default async function OverviewPage() {
     successesLast24h,
     failuresLast24h,
     qualityAlerts,
-  ] = await Promise.all([
-    db.podcast.findMany({
-      orderBy: { updated_at: "desc" },
-      take: 50,
-      include: {
-        episodes: {
-          orderBy: { date_published: "desc" },
-          take: 3,
-        },
-      },
-    }),
-    db.podcast.count(),
-    db.episode.findMany({
-      orderBy: { date_published: "desc" },
-      take: 50,
-      include: {
-        podcast: true,
-      },
-    }),
-    db.syncLog.findMany({
-      orderBy: { started_at: "desc" },
-      take: 20,
-      include: {
-        podcast: true,
-      },
-    }),
-    db.episode.count(),
-    db.episode.count({
-      where: {
-        date_published: { gte: since24h },
-      },
-    }),
-    db.syncLog.count({
-      where: {
-        status: SyncStatus.PENDING,
-      },
-    }),
-    db.syncLog.count({
-      where: {
-        status: SyncStatus.SUCCESS,
-        started_at: { gte: since24h },
-      },
-    }),
-    db.syncLog.count({
-      where: {
-        status: SyncStatus.FAILED,
-        started_at: { gte: since24h },
-      },
-    }),
-    db.qualityAlert.findMany({
-      where: { status: "open" },
-      orderBy: { created_at: "desc" },
-      take: 5,
-    }),
-  ]);
+  ] = dashboardData;
 
   const trackedFeedIds = podcasts
     .map((podcast) => podcast.podcast_index_id)
@@ -549,4 +562,29 @@ function formatDate(date: Date) {
     minute: "numeric",
     hour12: false,
   }).format(date);
+}
+
+function MigrationRequiredNotice() {
+  return (
+    <main className="flex flex-1 items-center justify-center px-4 py-10">
+      <Card className="max-w-lg border-dashed border-primary/50">
+        <CardHeader>
+          <CardTitle className="text-xl">需要同步数据库结构</CardTitle>
+          <CardDescription>
+            检测到缺少最新的 Prisma 迁移（例如新增的
+            <code className="mx-1 rounded bg-muted px-1 py-0.5 text-[11px]">queue_job_id</code>
+            列或 <code className="mx-1 rounded bg-muted px-1 py-0.5 text-[11px]">podcast_editorials</code>
+            表）。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>请在终端执行以下命令以更新数据库 schema：</p>
+          <pre className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+            npm run prisma:migrate
+          </pre>
+          <p>迁移完成后刷新页面即可恢复仪表盘数据。</p>
+        </CardContent>
+      </Card>
+    </main>
+  );
 }

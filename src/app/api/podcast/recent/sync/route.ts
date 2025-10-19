@@ -46,10 +46,11 @@ export async function POST(request: Request) {
 
   if (shouldEnqueue) {
     try {
-      const job = await enqueueSyncRecentJob({ max, triggeredBy: "api" });
+      const job = await enqueueSyncRecentJob({ max, triggeredBy: "api", logId: log.id });
       await prisma.syncLog.update({
         where: { id: log.id },
         data: {
+          queue_job_id: job.id ? String(job.id) : null,
           message: `Queued job ${job.id} for recent data sync${max ? ` (max=${max})` : ""}`,
         },
       });

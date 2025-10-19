@@ -11,6 +11,7 @@ import {
   Mic2,
   Settings,
   Sparkles,
+  Bookmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +44,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: Library,
     href: "/library",
     isActive: (pathname) => pathname.startsWith("/library") || pathname.startsWith("/podcast"),
+  },
+  {
+    id: "collections",
+    label: "收藏集",
+    icon: Bookmark,
+    href: "/collections",
+    isActive: (pathname) => pathname.startsWith("/collections"),
   },
   {
     id: "discover",

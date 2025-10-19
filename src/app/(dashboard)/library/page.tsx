@@ -8,6 +8,7 @@ import { PodcastImportPanel } from "@/components/podcast/podcast-import-panel";
 import { SyncPodcastButton } from "@/components/podcast/sync-podcast-button";
 import { CollectionQuickAction } from "@/components/podcast/collection-quick-action";
 import { CollectionCreateForm } from "@/components/podcast/collection-create-form";
+import { PodcastLibraryActions } from "@/components/podcast/podcast-library-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,18 @@ type LibraryPageProps = {
 };
 
 const DEFAULT_TAKE = 100;
+
+const EDITORIAL_STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "正常",
+  PAUSED: "暂停",
+  ARCHIVED: "归档",
+};
+
+const EDITORIAL_PRIORITY_LABELS: Record<string, string> = {
+  HIGH: "高优",
+  NORMAL: "普通",
+  LOW: "低优",
+};
 
 export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   if (!prisma) {
@@ -92,6 +105,7 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
           orderBy: { date_published: "desc" },
           take: 1,
         },
+        editorial: true,
       },
     }),
     prisma.podcast.count({ where }),
@@ -237,6 +251,12 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
                       const hasValue =
                         podcast.value_destinations.length > 0 ||
                         Boolean(podcast.value_model_type || podcast.value_block);
+                      const editorial = podcast.editorial;
+                      const displayTitle = editorial?.display_title ?? podcast.title;
+                      const displayAuthor = editorial?.display_author ?? podcast.author ?? "未知作者";
+                      const statusLabel = editorial ? EDITORIAL_STATUS_LABELS[editorial.status] ?? editorial.status : null;
+                      const priorityLabel = editorial ? EDITORIAL_PRIORITY_LABELS[editorial.priority] ?? editorial.priority : null;
+                      const editorialTags = editorial?.tags ?? [];
 
                       return (
                         <TableRow key={podcast.id}>
@@ -246,16 +266,38 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
                                 href={`/podcast/${podcast.id}`}
                                 className="font-medium text-foreground hover:text-primary hover:underline"
                               >
-                                {podcast.title}
+                                {displayTitle}
                               </Link>
                               <span className="text-xs text-muted-foreground">
-                                {podcast.author ?? "未知作者"}
+                                {displayAuthor}
                               </span>
                               {podcast.categories.length ? (
                                 <div className="flex flex-wrap gap-1">
                                   {podcast.categories.slice(0, 3).map((item) => (
                                     <Badge key={item.category_id} variant="outline" className="text-[10px] font-normal">
                                       {item.category.name}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {editorial ? (
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {statusLabel ? (
+                                    <Badge variant="outline" className="text-[10px] uppercase">
+                                      {statusLabel}
+                                    </Badge>
+                                  ) : null}
+                                  {priorityLabel ? (
+                                    <Badge
+                                      variant={editorial.priority === "HIGH" ? "destructive" : editorial.priority === "LOW" ? "secondary" : "outline"}
+                                      className="text-[10px] uppercase"
+                                    >
+                                      {priorityLabel}
+                                    </Badge>
+                                  ) : null}
+                                  {editorialTags.slice(0, 2).map((tag) => (
+                                    <Badge key={tag} variant="outline" className="text-[10px]">
+                                      #{tag}
                                     </Badge>
                                   ))}
                                 </div>
@@ -326,6 +368,23 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
                                   name: collection.name,
                                   description: collection.description,
                                 }))}
+                              />
+                              <PodcastLibraryActions
+                                podcastId={podcast.id}
+                                editorial={editorial ? {
+                                  display_title: editorial.display_title,
+                                  display_author: editorial.display_author,
+                                  display_image: editorial.display_image,
+                                  status: editorial.status,
+                                  priority: editorial.priority,
+                                  tags: editorial.tags,
+                                  notes: editorial.notes,
+                                } : null}
+                                defaults={{
+                                  title: podcast.title,
+                                  author: podcast.author ?? null,
+                                  image: podcast.artwork ?? podcast.image ?? null,
+                                }}
                               />
                             </div>
                           </TableCell>

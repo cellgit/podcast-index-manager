@@ -1,5 +1,6 @@
 import { Worker } from "bullmq";
 import type { Prisma } from "@prisma/client";
+import { SyncStatus } from "@prisma/client";
 
 import { createPodcastIndexClient } from "@/lib/podcast-index";
 import { logger } from "@/lib/logger";
@@ -16,6 +17,7 @@ const WORKER_NAME = "sync-recent";
 type SyncRecentJobPayload = {
   max?: number;
   triggeredBy?: string;
+  logId?: number;
 };
 
 export function registerSyncRecentWorker() {
@@ -36,29 +38,72 @@ export function registerSyncRecentWorker() {
       if (!prisma) {
         throw new Error("数据库未配置，无法执行同步");
       }
-      const client = createPodcastIndexClient();
-      const service = new PodcastService(client, prisma);
 
-      const summary = await service.syncRecentData({ max: job.data.max });
-      const quality = new QualityService(prisma);
-      await quality.evaluateAndPersist();
+      const logId = job.data.logId;
+      if (logId) {
+        await prisma.syncLog.updateMany({
+          where: { id: logId },
+          data: {
+            status: SyncStatus.RUNNING,
+            queue_job_id: job.id ? String(job.id) : null,
+            message: `Worker ${job.id ?? "unknown"} 开始处理增量同步`,
+            started_at: new Date(),
+          },
+        });
+      }
 
-      const workerDetails = {
-        lastJobId: job.id,
-        summary,
-        triggeredBy: job.data.triggeredBy ?? "schedule",
-      } satisfies Prisma.JsonObject;
-      await upsertSyncWorkerStatus("online", workerDetails);
+      try {
+        const client = createPodcastIndexClient();
+        const service = new PodcastService(client, prisma);
 
-      logger.info(
-        {
-          jobId: job.id,
+        const summary = await service.syncRecentData({ max: job.data.max });
+        const quality = new QualityService(prisma);
+        await quality.evaluateAndPersist();
+
+        const workerDetails = {
+          lastJobId: job.id,
           summary,
-        },
-        "sync-recent job completed",
-      );
+          triggeredBy: job.data.triggeredBy ?? "schedule",
+        } satisfies Prisma.JsonObject;
+        await upsertSyncWorkerStatus("online", workerDetails);
 
-      return summary;
+        if (logId) {
+          await prisma.syncLog.updateMany({
+            where: { id: logId },
+            data: {
+              status: SyncStatus.SUCCESS,
+              finished_at: new Date(),
+              message: `增量同步完成：处理 ${summary.feedsProcessed} 个播客 / ${summary.episodesProcessed} 条节目`,
+            },
+          });
+        }
+
+        logger.info(
+          {
+            jobId: job.id,
+            summary,
+          },
+          "sync-recent job completed",
+        );
+
+        return summary;
+      } catch (error) {
+        if (logId) {
+          await prisma.syncLog.updateMany({
+            where: { id: logId },
+            data: {
+              status: SyncStatus.FAILED,
+              finished_at: new Date(),
+              error: {
+                message:
+                  error instanceof Error ? error.message : "未知错误",
+              },
+              message: "增量同步任务失败，请检查 Worker 日志。",
+            },
+          });
+        }
+        throw error;
+      }
     },
     { connection }
   );
@@ -78,6 +123,18 @@ export function registerSyncRecentWorker() {
         error: err.message,
       } satisfies Prisma.JsonObject;
       await upsertSyncWorkerStatus("error", errorDetails);
+      const logId = job?.data?.logId;
+      if (logId) {
+        await prisma.syncLog.updateMany({
+          where: { id: logId, status: { not: SyncStatus.FAILED } },
+          data: {
+            status: SyncStatus.FAILED,
+            finished_at: new Date(),
+            error: { message: err.message },
+            message: err.message,
+          },
+        });
+      }
     }
   });
 

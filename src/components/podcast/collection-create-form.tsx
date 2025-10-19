@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ export function CollectionCreateForm() {
   const [description, setDescription] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -40,6 +42,7 @@ export function CollectionCreateForm() {
       setMessage("已创建收藏集");
       setName("");
       setDescription("");
+      router.refresh();
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "创建失败");
