@@ -12,64 +12,65 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// 播客表 - 存储播客源的元数据信息
 model Podcast {
-  id                         Int       @id @default(autoincrement())
-  podcast_index_id           Int       @unique(map: "podcasts_podcast_index_id_unique")
-  podcast_guid               String?   @unique(map: "podcasts_podcast_guid_unique")
-  title                      String
-  url                        String    @unique(map: "podcasts_url_unique")
-  original_url               String?
-  link                       String?
-  description                String?   @db.Text
-  author                     String?
-  owner_name                 String?
-  owner_email                String?
-  image                      String?
-  artwork                    String?
-  last_update_time           DateTime?
-  last_crawl_time            DateTime?
-  last_parse_time            DateTime?
-  last_good_http_status_time DateTime?
-  last_http_status           Int?
-  content_type               String?
-  itunes_id                  Int?
-  itunes_type                String?
-  generator                  String?
-  language                   String?   @db.VarChar(64)
-  explicit                   Boolean?  @default(false)
-  type                       Int?
-  medium                     String?   @db.VarChar(32)
-  dead                       Int?      @default(0)
-  priority                   Int?
-  in_polling_queue           Boolean?
-  chash                      String?
-  created_on                 DateTime?
-  episode_count              Int?      @default(0)
-  crawl_errors               Int?      @default(0)
-  parse_errors               Int?      @default(0)
-  locked                     Boolean?  @default(false)
-  image_url_hash             BigInt?
-  oldest_item_pubdate        DateTime?
-  newest_item_pubdate        DateTime?
-  popularity                 Int?
-  trend_score                Int?
-  duplicate_of_feed_id       Int?
-  value_created_on           DateTime?
-  value_block                String?   @db.Text
-  funding_url                String?
-  funding_message            String?
-  value_model_type           String?
-  value_model_method         String?
-  value_model_suggested      String?
-  created_at                 DateTime  @default(now())
-  updated_at                 DateTime  @updatedAt
+  id                         Int       @id @default(autoincrement()) /// 主键ID
+  podcast_index_id           Int       @unique(map: "podcasts_podcast_index_id_unique") /// PodcastIndex平台的Feed ID
+  podcast_guid               String?   @unique(map: "podcasts_podcast_guid_unique") /// 播客全局唯一标识符
+  title                      String /// 播客标题
+  url                        String    @unique(map: "podcasts_url_unique") /// RSS订阅地址
+  original_url               String? /// 原始订阅地址
+  link                       String? /// 播客网站链接
+  description                String?   @db.Text /// 播客描述
+  author                     String? /// 作者
+  owner_name                 String? /// 所有者名称
+  owner_email                String? /// 所有者邮箱
+  image                      String? /// 图片URL
+  artwork                    String? /// 封面图URL
+  last_update_time           DateTime? /// 最后更新时间
+  last_crawl_time            DateTime? /// 最后抓取时间
+  last_parse_time            DateTime? /// 最后解析时间
+  last_good_http_status_time DateTime? /// 最后HTTP状态正常的时间
+  last_http_status           Int? /// 最后HTTP状态码
+  content_type               String? /// 内容类型
+  itunes_id                  Int? /// iTunes ID
+  itunes_type                String? /// iTunes类型
+  generator                  String? /// RSS生成器
+  language                   String?   @db.VarChar(64) /// 语言代码
+  explicit                   Boolean?  @default(false) /// 是否包含成人内容
+  type                       Int? /// 播客类型
+  medium                     String?   @db.VarChar(32) /// 媒体类型(如:podcast, music, video)
+  dead                       Int?      @default(0) /// 是否已失效(0=正常,1=失效)
+  priority                   Int? /// 优先级
+  in_polling_queue           Boolean? /// 是否在轮询队列中
+  chash                      String? /// 内容哈希值
+  created_on                 DateTime? /// PodcastIndex创建时间
+  episode_count              Int?      @default(0) /// 节目总数
+  crawl_errors               Int?      @default(0) /// 抓取错误次数
+  parse_errors               Int?      @default(0) /// 解析错误次数
+  locked                     Boolean?  @default(false) /// 是否锁定
+  image_url_hash             BigInt? /// 图片URL哈希值
+  oldest_item_pubdate        DateTime? /// 最早节目发布日期
+  newest_item_pubdate        DateTime? /// 最新节目发布日期
+  popularity                 Int? /// 热度值
+  trend_score                Int? /// 趋势分数
+  duplicate_of_feed_id       Int? /// 重复源的原始Feed ID
+  value_created_on           DateTime? /// Value for Value创建时间
+  value_block                String?   @db.Text /// Value for Value配置JSON
+  funding_url                String? /// 赞助链接
+  funding_message            String? /// 赞助信息
+  value_model_type           String? /// 价值模型类型
+  value_model_method         String? /// 价值模型方法
+  value_model_suggested      String? /// 建议的价值模型
+  created_at                 DateTime  @default(now()) /// 本地创建时间
+  updated_at                 DateTime  @updatedAt /// 本地更新时间
 
-  episodes           Episode[]
-  sync_logs          SyncLog[]
-  categories         PodcastCategory[]
-  value_destinations PodcastValueDestination[]
-  collection_items   PodcastCollectionItem[]
-  editorial          PodcastEditorial?
+  episodes           Episode[] /// 关联的节目列表
+  sync_logs          SyncLog[] /// 同步日志
+  categories         PodcastCategory[] /// 播客分类关联
+  value_destinations PodcastValueDestination[] /// Value for Value收款地址
+  collection_items   PodcastCollectionItem[] /// 合集关联
+  editorial          PodcastEditorial? /// 编辑信息
 
   @@index([title], map: "podcasts_title_idx", type: Hash)
   @@index([language], map: "podcasts_language_idx")
@@ -79,55 +80,56 @@ model Podcast {
   @@map("podcasts")
 }
 
+/// 节目表 - 存储播客节目(Episode)的详细信息
 model Episode {
-  id                    Int       @id @default(autoincrement())
-  podcast_id            Int
-  podcast               Podcast   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
-  feed_id               Int
-  podcast_index_id      BigInt?   @unique(map: "episodes_podcast_index_id_unique")
-  guid                  String?   @db.VarChar(512)
-  title                 String
-  description           String?   @db.Text
-  link                  String?
-  date_published        DateTime?
-  date_crawled          DateTime?
-  enclosure_url         String?   @db.Text
-  enclosure_type        String?   @db.VarChar(128)
-  enclosure_length      Int?      @default(0)
-  duration              Int?
-  explicit              Boolean?  @default(false)
-  episode               Int?
-  episode_type          String?   @db.VarChar(32)
-  season                Int?
-  image                 String?
-  image_url_hash        BigInt?
-  feed_itunes_id        Int?
-  feed_image            String?
-  feed_image_url_hash   BigInt?
-  feed_url              String?
-  feed_title            String?
-  feed_author           String?
-  feed_language         String?
-  feed_dead             Int?
-  feed_duplicate_of     Int?
-  transcript_url        String?
-  chapters_url          String?
-  content_link          String?
-  start_time            DateTime?
-  end_time              DateTime?
-  status                String?   @db.VarChar(32)
-  value_model_type      String?
-  value_model_method    String?
-  value_model_suggested String?
-  value_created_on      DateTime?
-  created_at            DateTime  @default(now())
-  updated_at            DateTime  @updatedAt
+  id                    Int       @id @default(autoincrement()) /// 主键ID
+  podcast_id            Int /// 所属播客ID
+  podcast               Podcast   @relation(fields: [podcast_id], references: [id], onDelete: Cascade) /// 所属播客
+  feed_id               Int /// PodcastIndex的Feed ID
+  podcast_index_id      BigInt?   @unique(map: "episodes_podcast_index_id_unique") /// PodcastIndex的Episode ID
+  guid                  String?   @db.VarChar(512) /// 节目GUID
+  title                 String /// 节目标题
+  description           String?   @db.Text /// 节目描述
+  link                  String? /// 节目链接
+  date_published        DateTime? /// 发布日期
+  date_crawled          DateTime? /// 抓取日期
+  enclosure_url         String?   @db.Text /// 音频文件URL
+  enclosure_type        String?   @db.VarChar(128) /// 音频文件MIME类型
+  enclosure_length      Int?      @default(0) /// 音频文件大小(字节)
+  duration              Int? /// 时长(秒)
+  explicit              Boolean?  @default(false) /// 是否包含成人内容
+  episode               Int? /// 集数
+  episode_type          String?   @db.VarChar(32) /// 节目类型(full, trailer, bonus)
+  season                Int? /// 季数
+  image                 String? /// 节目封面URL
+  image_url_hash        BigInt? /// 封面URL哈希值
+  feed_itunes_id        Int? /// 所属播客的iTunes ID
+  feed_image            String? /// 播客封面URL
+  feed_image_url_hash   BigInt? /// 播客封面URL哈希值
+  feed_url              String? /// 播客RSS地址
+  feed_title            String? /// 播客标题
+  feed_author           String? /// 播客作者
+  feed_language         String? /// 播客语言
+  feed_dead             Int? /// 播客是否失效
+  feed_duplicate_of     Int? /// 播客是否重复
+  transcript_url        String? /// 字幕文件URL
+  chapters_url          String? /// 章节信息URL
+  content_link          String? /// 内容链接
+  start_time            DateTime? /// 直播开始时间
+  end_time              DateTime? /// 直播结束时间
+  status                String?   @db.VarChar(32) /// 状态(live, ended, pending)
+  value_model_type      String? /// 价值模型类型
+  value_model_method    String? /// 价值模型方法
+  value_model_suggested String? /// 建议的价值模型
+  value_created_on      DateTime? /// Value for Value创建时间
+  created_at            DateTime  @default(now()) /// 本地创建时间
+  updated_at            DateTime  @updatedAt /// 本地更新时间
 
-  transcripts         EpisodeTranscript[]
-  persons             EpisodePerson[]
-  soundbites          EpisodeSoundbite[]
-  social_interactions EpisodeSocialInteraction[]
-  value_destinations  EpisodeValueDestination[]
+  transcripts         EpisodeTranscript[] /// 字幕列表
+  persons             EpisodePerson[] /// 相关人物
+  soundbites          EpisodeSoundbite[] /// 精彩片段
+  social_interactions EpisodeSocialInteraction[] /// 社交互动
+  value_destinations  EpisodeValueDestination[] /// Value for Value收款地址
 
   @@unique([podcast_id, guid], map: "episodes_podcast_guid_unique")
   @@index([podcast_id, date_published(sort: Desc)], map: "episodes_podcast_published_idx")
@@ -137,18 +139,19 @@ model Episode {
   @@map("episodes")
 }
 
+/// 同步日志表 - 记录数据同步任务的执行情况
 model SyncLog {
-  id          Int        @id @default(autoincrement())
-  podcast_id  Int?
-  podcast     Podcast?   @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
-  job_type    String     @db.VarChar(64)
-  status      SyncStatus
-  queue_job_id String?   @db.VarChar(64)
-  started_at  DateTime   @default(now())
-  finished_at DateTime?
-  payload     Json?
-  error       Json?
-  message     String?    @db.Text
+  id          Int        @id @default(autoincrement()) /// 主键ID
+  podcast_id  Int? /// 关联的播客ID
+  podcast     Podcast?   @relation(fields: [podcast_id], references: [id], onDelete: Cascade) /// 关联的播客
+  job_type    String     @db.VarChar(64) /// 任务类型
+  status      SyncStatus /// 任务状态
+  queue_job_id String?   @db.VarChar(64) /// 队列任务ID
+  started_at  DateTime   @default(now()) /// 开始时间
+  finished_at DateTime? /// 结束时间
+  payload     Json? /// 任务参数
+  error       Json? /// 错误信息
+  message     String?    @db.Text /// 消息
 
   @@index([status, started_at(sort: Desc)], map: "sync_logs_status_started_idx")
   @@index([podcast_id, started_at(sort: Desc)], map: "sync_logs_podcast_started_idx")
@@ -156,221 +159,238 @@ model SyncLog {
   @@map("sync_logs")
 }
 
+/// 同步状态枚举
 enum SyncStatus {
-  PENDING
-  RUNNING
-  SUCCESS
-  FAILED
+  PENDING  /// 等待中
+  RUNNING  /// 运行中
+  SUCCESS  /// 成功
+  FAILED   /// 失败
 }
 
+/// 同步游标表 - 记录增量同步的位置
 model SyncCursor {
-  id         String   @id
-  cursor     String
-  updated_at DateTime @updatedAt
+  id         String   @id /// 游标标识符
+  cursor     String /// 游标值
+  updated_at DateTime @updatedAt /// 更新时间
 
   @@map("sync_cursors")
 }
 
+/// 同步工作进程表 - 记录同步工作进程的状态
 model SyncWorker {
-  id         Int      @id @default(autoincrement())
-  name       String   @db.VarChar(64)
-  status     String   @db.VarChar(32)
-  last_seen  DateTime @updatedAt
-  details    Json?
-  created_at DateTime @default(now())
+  id         Int      @id @default(autoincrement()) /// 主键ID
+  name       String   @db.VarChar(64) /// 工作进程名称
+  status     String   @db.VarChar(32) /// 工作进程状态
+  last_seen  DateTime @updatedAt /// 最后心跳时间
+  details    Json? /// 详细信息
+  created_at DateTime @default(now()) /// 创建时间
 
   @@index([name], map: "sync_workers_name_idx")
   @@map("sync_workers")
 }
 
+/// 分类表 - 存储播客分类信息
 model Category {
-  id         Int      @id
-  name       String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id         Int      @id /// 分类ID
+  name       String /// 分类名称
+  created_at DateTime @default(now()) /// 创建时间
+  updated_at DateTime @updatedAt /// 更新时间
 
-  podcast_categories PodcastCategory[]
+  podcast_categories PodcastCategory[] /// 播客分类关联
 
   @@map("categories")
 }
 
+/// 播客分类关联表 - 多对多关系
 model PodcastCategory {
-  podcast_id  Int
-  category_id Int
-  podcast     Podcast  @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
-  category    Category @relation(fields: [category_id], references: [id], onDelete: Cascade)
-  created_at  DateTime @default(now())
+  podcast_id  Int /// 播客ID
+  category_id Int /// 分类ID
+  podcast     Podcast  @relation(fields: [podcast_id], references: [id], onDelete: Cascade) /// 播客
+  category    Category @relation(fields: [category_id], references: [id], onDelete: Cascade) /// 分类
+  created_at  DateTime @default(now()) /// 创建时间
 
   @@id([podcast_id, category_id])
   @@index([category_id], map: "podcast_categories_category_idx")
   @@map("podcast_categories")
 }
 
+/// 播客合集表 - 用于组织播客集合
 model PodcastCollection {
-  id          Int      @id @default(autoincrement())
-  name        String   @db.VarChar(128)
-  description String?  @db.Text
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id          Int      @id @default(autoincrement()) /// 主键ID
+  name        String   @db.VarChar(128) /// 合集名称
+  description String?  @db.Text /// 合集描述
+  created_at  DateTime @default(now()) /// 创建时间
+  updated_at  DateTime @updatedAt /// 更新时间
 
-  items PodcastCollectionItem[]
+  items PodcastCollectionItem[] /// 合集项目
 
   @@unique([name], map: "podcast_collections_name_unique")
   @@map("podcast_collections")
 }
 
+/// 播客合集项目表 - 合集与播客的多对多关系
 model PodcastCollectionItem {
-  collection_id Int
-  podcast_id    Int
-  position      Int      @default(0)
-  added_at      DateTime @default(now())
+  collection_id Int /// 合集ID
+  podcast_id    Int /// 播客ID
+  position      Int      @default(0) /// 排序位置
+  added_at      DateTime @default(now()) /// 添加时间
 
-  collection PodcastCollection @relation(fields: [collection_id], references: [id], onDelete: Cascade)
-  podcast    Podcast           @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
+  collection PodcastCollection @relation(fields: [collection_id], references: [id], onDelete: Cascade) /// 合集
+  podcast    Podcast           @relation(fields: [podcast_id], references: [id], onDelete: Cascade) /// 播客
 
   @@id([collection_id, podcast_id])
   @@index([podcast_id], map: "collection_items_podcast_idx")
   @@map("podcast_collection_items")
 }
 
+/// 质量告警表 - 记录数据质量问题
 model QualityAlert {
-  id          Int       @id @default(autoincrement())
-  severity    String    @db.VarChar(16)
-  title       String
-  description String?   @db.Text
-  status      String    @default("open") @db.VarChar(16)
-  metadata    Json?
-  created_at  DateTime  @default(now())
-  updated_at  DateTime  @updatedAt
-  resolved_at DateTime?
+  id          Int       @id @default(autoincrement()) /// 主键ID
+  severity    String    @db.VarChar(16) /// 严重程度(low, medium, high, critical)
+  title       String /// 告警标题
+  description String?   @db.Text /// 告警描述
+  status      String    @default("open") @db.VarChar(16) /// 状态(open, resolved)
+  metadata    Json? /// 元数据
+  created_at  DateTime  @default(now()) /// 创建时间
+  updated_at  DateTime  @updatedAt /// 更新时间
+  resolved_at DateTime? /// 解决时间
 
   @@index([status], map: "quality_alerts_status_idx")
   @@map("quality_alerts")
 }
 
+/// 播客Value for Value收款地址表
 model PodcastValueDestination {
-  id           Int      @id @default(autoincrement())
-  podcast_id   Int
-  podcast      Podcast  @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
-  name         String?
-  address      String
-  type         String?
-  split        Int?
-  fee          Boolean?
-  custom_key   String?
-  custom_value String?
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
+  id           Int      @id @default(autoincrement()) /// 主键ID
+  podcast_id   Int /// 播客ID
+  podcast      Podcast  @relation(fields: [podcast_id], references: [id], onDelete: Cascade) /// 播客
+  name         String? /// 收款人名称
+  address      String /// 收款地址
+  type         String? /// 地址类型(node, address)
+  split        Int? /// 分成比例
+  fee          Boolean? /// 是否收取费用
+  custom_key   String? /// 自定义键
+  custom_value String? /// 自定义值
+  created_at   DateTime @default(now()) /// 创建时间
+  updated_at   DateTime @updatedAt /// 更新时间
 
   @@index([podcast_id], map: "podcast_value_destinations_podcast_idx")
   @@map("podcast_value_destinations")
 }
 
+/// 播客编辑信息表 - 存储编辑后的播客展示信息
 model PodcastEditorial {
-  podcast_id     Int                      @id
-  podcast        Podcast                  @relation(fields: [podcast_id], references: [id], onDelete: Cascade)
-  status         PodcastEditorialStatus   @default(ACTIVE)
-  priority       PodcastEditorialPriority @default(NORMAL)
-  display_title  String?
-  display_author String?
-  display_image  String?
-  tags           String[]                 @default([]) @db.Text
-  notes          String?                  @db.Text
-  created_at     DateTime                 @default(now())
-  updated_at     DateTime                 @updatedAt
+  podcast_id     Int                      @id /// 播客ID(主键)
+  podcast        Podcast                  @relation(fields: [podcast_id], references: [id], onDelete: Cascade) /// 播客
+  status         PodcastEditorialStatus   @default(ACTIVE) /// 状态
+  priority       PodcastEditorialPriority @default(NORMAL) /// 优先级
+  display_title  String? /// 展示标题
+  display_author String? /// 展示作者
+  display_image  String? /// 展示封面
+  tags           String[]                 @default([]) @db.Text /// 标签
+  notes          String?                  @db.Text /// 备注
+  created_at     DateTime                 @default(now()) /// 创建时间
+  updated_at     DateTime                 @updatedAt /// 更新时间
 
   @@map("podcast_editorials")
 }
 
+/// 播客编辑状态枚举
 enum PodcastEditorialStatus {
-  ACTIVE
-  PAUSED
-  ARCHIVED
+  ACTIVE   /// 激活
+  PAUSED   /// 暂停
+  ARCHIVED /// 归档
 }
 
+/// 播客编辑优先级枚举
 enum PodcastEditorialPriority {
-  LOW
-  NORMAL
-  HIGH
+  LOW    /// 低
+  NORMAL /// 普通
+  HIGH   /// 高
 }
 
+/// 节目字幕表
 model EpisodeTranscript {
-  id         Int      @id @default(autoincrement())
-  episode_id Int
-  episode    Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
-  url        String
-  type       String?
-  language   String?
-  rel        String?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id         Int      @id @default(autoincrement()) /// 主键ID
+  episode_id Int /// 节目ID
+  episode    Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade) /// 节目
+  url        String /// 字幕文件URL
+  type       String? /// 字幕类型(srt, vtt, json)
+  language   String? /// 字幕语言
+  rel        String? /// 关系类型(captions)
+  created_at DateTime @default(now()) /// 创建时间
+  updated_at DateTime @updatedAt /// 更新时间
 
   @@unique([episode_id, url], map: "episode_transcripts_episode_url_unique")
   @@index([episode_id], map: "episode_transcripts_episode_idx")
   @@map("episode_transcripts")
 }
 
+/// 节目人物表 - 记录节目中提到的人物
 model EpisodePerson {
-  id              Int      @id @default(autoincrement())
-  episode_id      Int
-  episode         Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
-  person_index_id Int?
-  name            String
-  role            String?
-  group_name      String?  @map("group")
-  href            String?
-  img             String?
-  metadata        Json?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id              Int      @id @default(autoincrement()) /// 主键ID
+  episode_id      Int /// 节目ID
+  episode         Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade) /// 节目
+  person_index_id Int? /// 人物索引ID
+  name            String /// 人物姓名
+  role            String? /// 角色(host, guest)
+  group_name      String?  @map("group") /// 所属组织
+  href            String? /// 人物链接
+  img             String? /// 人物头像
+  metadata        Json? /// 元数据
+  created_at      DateTime @default(now()) /// 创建时间
+  updated_at      DateTime @updatedAt /// 更新时间
 
   @@index([episode_id], map: "episode_persons_episode_idx")
   @@map("episode_persons")
 }
 
+/// 节目精彩片段表
 model EpisodeSoundbite {
-  id         Int      @id @default(autoincrement())
-  episode_id Int
-  episode    Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
-  start_time Int
-  duration   Int
-  title      String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id         Int      @id @default(autoincrement()) /// 主键ID
+  episode_id Int /// 节目ID
+  episode    Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade) /// 节目
+  start_time Int /// 开始时间(秒)
+  duration   Int /// 持续时长(秒)
+  title      String /// 片段标题
+  created_at DateTime @default(now()) /// 创建时间
+  updated_at DateTime @updatedAt /// 更新时间
 
   @@index([episode_id], map: "episode_soundbites_episode_idx")
   @@map("episode_soundbites")
 }
 
+/// 节目社交互动表
 model EpisodeSocialInteraction {
-  id          Int      @id @default(autoincrement())
-  episode_id  Int
-  episode     Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
-  url         String
-  protocol    String
-  account_id  String?
-  account_url String?
-  priority    Int?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id          Int      @id @default(autoincrement()) /// 主键ID
+  episode_id  Int /// 节目ID
+  episode     Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade) /// 节目
+  url         String /// 互动URL
+  protocol    String /// 协议(activitypub, twitter)
+  account_id  String? /// 账号ID
+  account_url String? /// 账号URL
+  priority    Int? /// 优先级
+  created_at  DateTime @default(now()) /// 创建时间
+  updated_at  DateTime @updatedAt /// 更新时间
 
   @@index([episode_id], map: "episode_social_interactions_episode_idx")
   @@map("episode_social_interactions")
 }
 
+/// 节目Value for Value收款地址表
 model EpisodeValueDestination {
-  id           Int      @id @default(autoincrement())
-  episode_id   Int
-  episode      Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade)
-  name         String?
-  address      String
-  type         String?
-  split        Int?
-  fee          Boolean?
-  custom_key   String?
-  custom_value String?
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
+  id           Int      @id @default(autoincrement()) /// 主键ID
+  episode_id   Int /// 节目ID
+  episode      Episode  @relation(fields: [episode_id], references: [id], onDelete: Cascade) /// 节目
+  name         String? /// 收款人名称
+  address      String /// 收款地址
+  type         String? /// 地址类型(node, address)
+  split        Int? /// 分成比例
+  fee          Boolean? /// 是否收取费用
+  custom_key   String? /// 自定义键
+  custom_value String? /// 自定义值
+  created_at   DateTime @default(now()) /// 创建时间
+  updated_at   DateTime @updatedAt /// 更新时间
 
   @@index([episode_id], map: "episode_value_destinations_episode_idx")
   @@map("episode_value_destinations")
