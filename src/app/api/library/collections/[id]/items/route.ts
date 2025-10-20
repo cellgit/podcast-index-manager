@@ -82,14 +82,15 @@ export async function DELETE(
   const collectionId = Number.parseInt(id, 10);
   const podcastNumeric = Number.parseInt(podcastId, 10);
 
-  await prisma.podcastCollectionItem.delete({
+  const result = await prisma.podcastCollectionItem.deleteMany({
     where: {
-      collection_id_podcast_id: {
-        collection_id: collectionId,
-        podcast_id: podcastNumeric,
-      },
+      collection_id: collectionId,
+      podcast_id: podcastNumeric,
     },
   });
 
-  return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(
+    { success: true, removed: result.count },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

@@ -37,6 +37,7 @@ if (!bootstrapState.__podcastIndexBootstrap) {
 
 
 import { createHash } from "node:crypto";
+import { logger } from "./logger";
 // https://api.podcastindex.org/api/1.0/search/byterm?q=batman+university&pretty
 const API_BASE = "https://api.podcastindex.org/api/1.0" as const;
 const RATE_LIMIT_INTERVAL_MS = Number(
@@ -421,7 +422,14 @@ export class PodcastIndexClient {
 
       let response: Response;
       try {
-        console.log(`Fetching========== ${url}`);
+        const { pathname } = new URL(url);
+        logger.debug(
+          {
+            method: init.method ?? "GET",
+            endpoint: pathname,
+          },
+          "podcast-index request",
+        );
         response = await fetch(url, {
           ...init,
           headers,

@@ -17,6 +17,8 @@ import { QueueBulkActions } from "@/components/tasks/queue-bulk-actions";
 import { getQueueBundle } from "@/jobs/queue";
 import { TaskLogPanel } from "@/components/tasks/task-log-panel";
 
+export const runtime = "nodejs";
+
 type TasksPageProps = {
   searchParams: Promise<{
     status?: SyncStatus | "ALL";
